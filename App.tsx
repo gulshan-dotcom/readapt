@@ -1,20 +1,39 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { StatusBar } from "expo-status-bar";
+import { Platform, StatusBar as RNStatusBar, StyleSheet, View } from "react-native";
+import MainNavigation from "./components/nav/MainNavigation";
+import Toast from "./components/state/Toast";
+import Modal from "./components/state/Modal";
+import { DataProvider } from "./components/state/DataContext";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useEffect } from "react";
+import * as NavigationBar from "expo-navigation-bar";
 
 export default function App() {
+  useEffect(() => {
+    if (Platform.OS === "android") {
+      RNStatusBar.setTranslucent(false); 
+      NavigationBar.setStyle("dark");
+    }
+  }, []);
   return (
-    <View style={styles.container}>
-      <Text>Open up App.tsx to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <SafeAreaProvider>
+      <View style={styles.container}>
+        <DataProvider>
+          <MainNavigation />
+          <Toast />
+          <Modal />
+          <StatusBar style="light" 
+          backgroundColor="#090314" 
+          animated={true} />
+        </DataProvider>
+      </View>
+    </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#050614" 
   },
 });
