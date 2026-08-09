@@ -2,7 +2,7 @@
   "expo": {
     "name": "Readapt",
     "slug": "waves",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
