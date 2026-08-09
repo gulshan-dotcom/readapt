@@ -2,7 +2,8 @@
   "expo": {
     "name": "Readapt",
     "slug": "waves",
-    "newArchEnabled": false,
+    "scheme": "waves",
+    "newArchEnabled": true,
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -34,7 +35,8 @@
       "expo-web-browser",
       "@react-native-google-signin/google-signin",
       "@config-plugins/react-native-pdf",
-      "@config-plugins/react-native-blob-util"
+      "@config-plugins/react-native-blob-util",
+      "expo-audio"
     ],
     "extra": {
       "eas": {
