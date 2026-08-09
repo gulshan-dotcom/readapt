@@ -81,8 +81,8 @@ const Login = ({ route, navigation }: Props) => {
       "accessToken",
       JSON.stringify({
         token:
-          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2YTQxZGJiM2JhNGMwNjE1ZjM4ZGI5YmMiLCJlbWFpbCI6InJvbGVAdXNlci5jb20iLCJ1c2VySWQiOiJyb2xlIiwiaWF0IjoxNzgyNzAwOTc5LCJleHAiOjE3ODUyOTI5Nzl9.0Y-ZDlcY7RiBT4-T43njN2z6F0DtQYxJLu3RH4a2kxk",
-        expiry: "1785311879022",
+          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2YTQxZGJiM2JhNGMwNjE1ZjM4ZGI5YmMiLCJlbWFpbCI6InJvbGVAdXNlci5jb20iLCJ1c2VySWQiOiJyb2xlIiwiaWF0IjoxNzg2MTYzMzQyLCJleHAiOjE3ODg3NTUzNDJ9.p1bjmIp-Fneiq6XdG_XfI_nmVXPBQc42fI_-cCP1LVA",
+        expiry: "1788755342572",
       }),
     );
     navigation.replace("Tabs");
