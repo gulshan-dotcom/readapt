@@ -1,5 +1,6 @@
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import React, { useEffect, useRef, useState } from "react";
+import Pdf from "react-native-pdf";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
     View,
     Text,
@@ -11,6 +12,7 @@ import {
     StatusBar,
     ActivityIndicator,
     InteractionManager,
+    Platform,
 } from "react-native";
 import { Gesture } from "react-native-gesture-handler";
 import Svg, { Path, Line, Circle, Polyline } from "react-native-svg";
@@ -18,7 +20,6 @@ import pallete from "../../lib/Colors";
 import ContentCard from "../../components/props/ContentCard";
 import { api } from "../../lib/api";
 import useAuth from "../../hooks/useAuth";
-
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { IRecentRead } from "../../types/Storage";
 import PopButton from "../../components/props/PopButton";
@@ -26,9 +27,7 @@ import { useToast } from "../../hooks/useToast";
 import { useUser } from "../../hooks/useUser";
 import CommentsDrawer from "../../components/props/Comments";
 import { SubscriptionPlan } from "../../enums";
-
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
-
 const MORPH_DISTANCE = 100;
 const CONTAINER_PADDING_TOP = 75;
 const SCROLLVIEW_MARGIN_TOP = 20;
@@ -38,20 +37,16 @@ const CARD_SCALE = 0.6;
 const CARD_WIDTH = SCREEN_WIDTH * CARD_SCALE;
 const CARD_HEIGHT = SCREEN_HEIGHT * CARD_SCALE;
 const CARD_RADIUS = 12;
-
 const CARD_HORIZONTAL_MARGIN =
     (SCREEN_WIDTH - PLAYER_CONTAINER_PADDING * 2 - CARD_WIDTH) / 2;
-
 const INITIAL_CENTER_X = SCREEN_WIDTH / 2;
 const INITIAL_CENTER_Y = SCREEN_HEIGHT / 2;
-
 const CARD_LEFT_ESTIMATE = (SCREEN_WIDTH - CARD_WIDTH) / 2;
 const CARD_TOP_ESTIMATE =
     CONTAINER_PADDING_TOP +
     SCROLLVIEW_MARGIN_TOP +
     PLAYER_CONTAINER_PADDING +
     PDF_FRAME_MARGIN_TOP;
-
 type Props = {
     route: {
         params: {
@@ -60,7 +55,6 @@ type Props = {
     };
     navigation: any;
 };
-
 type BookPopulated = {
     _id: string;
     title: string;
@@ -100,19 +94,28 @@ type BookPopulated = {
     createdAt: Date;
     updatedAt: Date;
 };
-
+const pdfUri =
+    'data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iaiA8PCAvVHlwZSAvQ2F0YWxvZyAvUG' +
+    'FnZXMgMiAwIFIgPj4gZW5kb2JqCjIgMCBvYmogPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUiA0' +
+    'IDAgUl0gL0NvdW50IDIgPj4gZW5kb2JqCjMgMCBvYmogPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyID' +
+    'AgUiAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvTWVkaWFCb3ggWzAgMCA2' +
+    'MTIgNzkyXSAvQ29udGVudHMgNiAwIFIgPj4gZW5kb2JqCjQgMCBvYmogPDwgL1R5cGUgL1BhZ2UgL1' +
+    'BhcmVudCAyIDAgUiAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvTWVkaWFC' +
+    'b3ggWzAgMCA2MTIgNzkyXSAvQ29udGVudHMgNyAwIFIgPj4gZW5kb2JqCjUgMCBvYmogPDwgL1R5cG' +
+    'UgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+IGVuZG9iago2IDAg' +
+    'b2JqIDw8IC9MZW5ndGggNDQgPj4gc3RyZWFtCkJUIC9GMSAyNCBUZiAxMDAgNzAwIFREIChUaGlzIG' +
+    'lzIFBhZ2UgMSkgVGogRVQKZW5kc3RyZWFtIGVuZG9iago3IDAgb2JqIDw8IC9MZW5ndGggNDQgPj4g' +
+    'c3RyZWFtCkJUIC9GMSAyNCBUZiAxMDAgNzAwIFREIChUaGlzIGlzIFBhZ2UgMikgVGogRVQKZW5kc3' +
+    'RyZWFtIGVuZG9iagp0cmFpbGVyIDw8IC9Sb290IDEgMCBSID4+CiUlRU9G';
 const BookReaderScreen = ({ route, navigation }: Props) => {
     const scrollRef = useRef<Animated.ScrollView>(null);
     const insets = useSafeAreaInsets();
-
     const scrollY = useRef(new Animated.Value(0)).current;
-
     const borderDriver = useRef(new Animated.Value(0)).current;
     const currentScrollYRef = useRef(0);
     const scrollDirectionRef = useRef<"up" | "down" | null>(null);
     const isSnappingRef = useRef(false);
     const morphSpringRef = useRef<Animated.CompositeAnimation | null>(null);
-
     const [accessToken] = useAuth();
     const [book, setBook] = useState<BookPopulated | null>();
     const [isLoading, setIsLoading] = useState(true);
@@ -122,11 +125,11 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
     const [isLiked, setIsLiked] = useState(false);
     const { user, reload } = useUser();
     const [showComments, setShowComments] = useState(false);
-
     const chapterId = route.params.bookId;
-
     const [isTocOpen, setIsTocOpen] = useState(false);
     const [isLocked, setIsLocked] = useState(false);
+    const [isPdfInteracting, setIsPdfInteracting] = useState(false);
+    const halfPdfRef = useRef<Pdf>(null);
 
     const [cardTarget, setCardTarget] = useState({
         x: CARD_LEFT_ESTIMATE,
@@ -135,15 +138,13 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
         height: CARD_HEIGHT,
     });
     const pdfFrameRef = useRef<View>(null);
-
     const measureCardPosition = () => {
         if (currentScrollYRef.current > 2) return;
-
         const doMeasure = () => {
             pdfFrameRef.current?.measureInWindow((x, y, width, height) => {
                 if (!Number.isFinite(x) || !Number.isFinite(y)) return;
                 setCardTarget({
-                    x,
+                    x: x - CARD_HORIZONTAL_MARGIN - PDF_FRAME_MARGIN_TOP - PLAYER_CONTAINER_PADDING,
                     y: y - MORPH_DISTANCE - insets.top +
                         SCROLLVIEW_MARGIN_TOP +
                         PLAYER_CONTAINER_PADDING +
@@ -153,28 +154,23 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                 });
             });
         };
-
         InteractionManager.runAfterInteractions(() => {
             requestAnimationFrame(doMeasure);
         });
         setTimeout(doMeasure, 400);
     };
-
     const fetchChapter = async () => {
         const chapter = await api.get(`/chapter/${chapterId}`, {
             headers: {
                 Authorization: `Bearer ${accessToken}`,
             },
         });
-
         setBook(chapter.data.data);
         setIsLoading(false);
     };
-
     useEffect(() => {
         fetchChapter();
     }, [accessToken]);
-
     const handleScroll = Animated.event(
         [{ nativeEvent: { contentOffset: { y: scrollY } } }],
         {
@@ -186,66 +182,61 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                 if (Math.abs(y - prevY) > 0.5) {
                     scrollDirectionRef.current = y > prevY ? "down" : "up";
                 }
+
                 currentScrollYRef.current = y;
                 borderDriver.setValue(y);
 
                 if (y >= MORPH_DISTANCE && !isLocked) {
                     setIsLocked(true);
-                } else if (y < MORPH_DISTANCE && isLocked) {
+                } else if (y <= 0 && isLocked) {
                     setIsLocked(false);
                 }
             },
-        },
+        }
     );
-
     const snapTo = (target: number) => {
         if (isSnappingRef.current) return;
         isSnappingRef.current = true;
         scrollDirectionRef.current = target === MORPH_DISTANCE ? "down" : "up";
         scrollRef.current?.scrollTo({ y: target, animated: true });
     };
-
     const handleScrollBeginDrag = () => {
         isSnappingRef.current = false;
         // optional: stop any in-flight spring so the finger feels direct
         morphSpringRef.current?.stop();
     };
-
     const snapToNearestState = (y: number) => {
-        if (y <= 0 || y >= MORPH_DISTANCE) {
+        if (y <= 0) {
             isSnappingRef.current = false;
             return;
         }
 
-        const target =
-            scrollDirectionRef.current === "up"
-                ? 0
-                : scrollDirectionRef.current === "down"
-                    ? MORPH_DISTANCE
-                    : y < MORPH_DISTANCE / 2
-                        ? 0
-                        : MORPH_DISTANCE;
+        // Small state reached by cross button / downward movement.
+        if (y >= MORPH_DISTANCE) {
+            isSnappingRef.current = false;
+            return;
+        }
 
-        snapTo(target);
+        // While going upward, return to fullscreen.
+        if (scrollDirectionRef.current === "up") {
+            snapTo(0);
+        } else {
+            snapTo(MORPH_DISTANCE);
+        }
     };
-
     const handleScrollEndDrag = (e: any) => {
         const y = e.nativeEvent.contentOffset.y;
         snapToNearestState(y);
-
     };
-
     const handleMomentumScrollEnd = (e: any) => {
         if (isSnappingRef.current) return;
         snapToNearestState(e.nativeEvent.contentOffset.y);
     };
     const openToc = () => setIsTocOpen(true);
     const closeToc = () => setIsTocOpen(false);
-
     const tocPan = Gesture.Pan().onEnd((e) => {
         if (e.translationX < -100) closeToc();
     });
-
     const progress = scrollY.interpolate({
         inputRange: [
             0,
@@ -255,51 +246,41 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
         outputRange: [0, 1],
         extrapolate: "clamp",
     });
-
     const overlayOpacity = progress.interpolate({
         inputRange: [0, 0.98, 1],
         outputRange: [1, 1, 0],
         extrapolate: "clamp",
     });
-
     const cardOpacity = progress.interpolate({
         inputRange: [0, 0.98, 1],
         outputRange: [0, 0, 1],
         extrapolate: "clamp",
     });
-
     const scale = progress.interpolate({
         inputRange: [0, 1],
         outputRange: [1, CARD_SCALE],
     });
-
     const targetCenterX = cardTarget.x + cardTarget.width / 2;
     const targetCenterY = cardTarget.y + cardTarget.height / 2;
-
     const translateXTo = targetCenterX - INITIAL_CENTER_X;
     const translateYTo = targetCenterY - INITIAL_CENTER_Y;
-
     const translateX = progress.interpolate({
         inputRange: [0, 1],
         outputRange: [0, translateXTo],
     });
-
     const translateY = progress.interpolate({
         inputRange: [0, 1],
         outputRange: [0, translateYTo],
     });
-
     const borderProgress = borderDriver.interpolate({
         inputRange: [0, MORPH_DISTANCE],
         outputRange: [0, 1],
         extrapolate: "clamp",
     });
-
     const borderRadius = borderProgress.interpolate({
         inputRange: [0, 1],
         outputRange: [0, CARD_RADIUS],
     });
-
     useEffect(() => {
         if (chapterId) return;
         const getRecentRead = async () => {
@@ -314,17 +295,14 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
         };
         getRecentRead();
     }, [chapterId]);
-
     const updateRecentReads = async () => {
         if (currentPage > 1 && book) {
             let oldRecentReads = await AsyncStorage.getItem("recentReads");
             if (!oldRecentReads) oldRecentReads = "[]";
             const recentReads: IRecentRead[] = JSON.parse(oldRecentReads);
-
             const newRecentReads = recentReads.filter(
                 (item) => item.content._id !== chapterId,
             );
-
             newRecentReads.push({
                 content: {
                     ...book,
@@ -335,11 +313,9 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                 total: book?.total + "",
                 readAt: new Date().toString(),
             });
-
             await AsyncStorage.setItem("recentReads", JSON.stringify(newRecentReads));
         }
     };
-
     const like = async () => {
         setIsLiked(!isLiked);
         try {
@@ -361,17 +337,23 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
             reload();
         }
     };
-
     const share = async () => {
         const shareUrl = await api.get("/shareurl/like");
         console.log(shareUrl);
     };
-
     const download = async () => {
         showToast({
             title: "Download will be start Once the developer wrote the code",
         });
     };
+
+    const pdfSource = useMemo(
+        () => ({
+            uri: pdfUri,
+            cache: true,
+        }),
+        [book?.media]
+    );
 
     return (
         <View style={styles.container}>
@@ -383,34 +365,48 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                 onMomentumScrollEnd={handleMomentumScrollEnd}
                 style={styles.scrollView}
                 scrollEventThrottle={16}
-                scrollEnabled={!isLoading}
+                scrollEnabled={!isLoading && !isPdfInteracting}
                 showsVerticalScrollIndicator={false}>
                 <View style={styles.falseHeight}></View>
-
                 {/* Main Content */}
-                
+
                 <View style={styles.playerContainer}>
-                 <Animated.View
+                    <Animated.View
                         ref={pdfFrameRef}
                         onLayout={measureCardPosition}
-                        style={[
-                            styles.pdfFrame,
-                            {
-                                opacity: cardOpacity,
-                            },
-                        ]}>
-                        <Image
-                            source={{
-                                uri: "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=600",
-                            }}
-                            style={styles.pdfImage}
-                        />
+                        style={[styles.pdfFrame, { opacity: cardOpacity }]}>
+                        {book?.media ? (
+                            <View
+                                style={styles.pdfTouchArea}
+                            
+                            >
+                                <Pdf
+                                ref={halfPdfRef}
+                                    trustAllCerts={false}
+                                    source={pdfSource}
+                                    singlePage={false}
+                                    horizontal={true}
+                                    enablePaging={true}
+                                    fitPolicy={0}
+                                    style={styles.pdfImage}
+                                    onPageChanged={(page) => {
+                                        console.log("111 111 first")
+                                        setCurrentPage(page);
+                                    }}
+                                    onError={(error) => {
+                                        console.error("PDF error:", error);
+                                    }}
+                                />
+                            </View>
+                        ) : (
+                            <View style={[styles.pdfImage, styles.pdfPlaceholder]}>
+                                <ActivityIndicator color={pallete.accent} />
+                            </View>
+                        )}
                     </Animated.View>
-
                     {/* Book Details */}
-                  <View style={styles.bookDetails}>
+                    <View style={styles.bookDetails}>
                         <Text style={styles.bookTitle}>{book?.title}</Text>
-
                         <View style={styles.row}>
                             <Text style={styles.bookAuthor}>{book?.author}</Text>
                             <View style={styles.divider} />
@@ -420,10 +416,9 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                                 {book?.comments.length} comments
                             </Text>
                         </View>
-
                         <View style={styles.controlStatsBar}>
                             <View style={styles.leftControls}>
-                                   
+
                                 <PopButton onPress={like}>
                                     <ControlButton
                                         icon="heart"
@@ -441,11 +436,10 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                                     <ControlButton icon="download" />
                                 </PopButton>
                             </View>
-                            <ControlButton icon="info" /> 
+                            <ControlButton icon="info" />
                         </View>
                     </View>
                 </View>
-
                 {/* Next Chapters */}
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
@@ -457,7 +451,7 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                 </View>
             </Animated.ScrollView>
             <Animated.View
-                pointerEvents="none"
+                pointerEvents="box-none"
                 style={[
                     styles.morphFrame,
                     {
@@ -470,27 +464,57 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                         ],
                     },
                 ]}>
+                {!isLocked && (
+                    <TouchableOpacity
+                        style={[
+                            styles.fullscreenClose,
+                            {
+                                top: insets.top + 16,
+                            },
+                        ]}
+                        onPress={() => {
+                            scrollRef.current?.scrollTo({
+                                y: MORPH_DISTANCE,
+                                animated: true,
+                            });
+                        }}
+                        activeOpacity={0.8}
+                    >
+                        <Text style={styles.closeText}>×</Text>
+                    </TouchableOpacity>
+                )}
                 <Animated.View
                     style={[
                         styles.morphFrameInner,
                         {
                             borderRadius,
-                            borderWidth: 1,
                         },
                     ]}>
-                    {isLoading ? (
-                        <ActivityIndicator color={pallete.accent} />
-                    ) : (
-                        <Image
-                            source={{
-                                uri: "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=600",
-                            }}
+                    {book?.media ?
+                        <Pdf
+                            trustAllCerts={false}
+                            source={pdfSource}
+                            singlePage={false}
+                            horizontal={true}
+                            enablePaging={true}
+                            fitPolicy={0}
                             style={styles.pdfImage}
+                            onPageChanged={(page) => {
+                                halfPdfRef.current?.setPage(page);
+                                console.log(halfPdfRef)
+                                setCurrentPage(page);
+                            }}
+                            onError={(error) => {
+                                console.error("PDF error:", error);
+                            }}
                         />
-                    )}
+                        : (
+                            <View style={styles.pdfPlaceholder}>
+                                <ActivityIndicator color={pallete.accent} />
+                            </View>
+                        )}
                 </Animated.View>
             </Animated.View>
-
             {isTocOpen && (
                 <>
                     <TouchableOpacity
@@ -529,7 +553,6 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
         </View>
     );
 };
-
 const ControlButton = ({
     icon,
     filled = "none",
@@ -572,7 +595,6 @@ const ControlButton = ({
         </Svg>
     </View>
 );
-
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -608,14 +630,22 @@ const styles = StyleSheet.create({
         left: 0,
         width: SCREEN_WIDTH,
         height: SCREEN_HEIGHT,
-    },
-    morphFrameInner: {
-        flex: 1,
-        backgroundColor: "#12121c",
-        overflow: "hidden",
-        borderColor: "rgba(255,255,255,0.08)",
+    }, pdfPlaceholder: {
         alignItems: "center",
         justifyContent: "center",
+    },
+    morphFrameInner: {
+       width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    backgroundColor: "#12121c",
+    overflow: "hidden",
+    borderColor: "rgba(255,255,255,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+    },
+    pdfTouchArea: {
+        width: "100%",
+        height: "100%",
     },
     bookDetails: { marginTop: 16 },
     bookTitle: {
@@ -660,7 +690,6 @@ const styles = StyleSheet.create({
         flexWrap: "wrap",
         gap: 16,
     },
-
     tocBackdrop: {
         ...StyleSheet.absoluteFillObject,
         backgroundColor: "rgba(0,0,0,0.7)",
@@ -708,6 +737,23 @@ const styles = StyleSheet.create({
         paddingVertical: 4,
         borderRadius: 6,
     },
-});
+    fullscreenClose: {
+        position: "absolute",
+        right: 16,
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: "rgba(0,0,0,0.65)",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+    },
 
+    closeText: {
+        color: "#fff",
+        fontSize: 30,
+        fontWeight: "300",
+        lineHeight: 32,
+    },
+});
 export default BookReaderScreen;

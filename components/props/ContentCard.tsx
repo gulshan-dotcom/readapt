@@ -14,8 +14,8 @@ import { IUser } from "../../types/User";
 
 const { width } = Dimensions.get("window");
 
-const CARD_GAP = 5;
-const SIDE_PADDING = 12;
+const CARD_GAP = 15;
+const SIDE_PADDING = 25;
 
 const CARD_WIDTH =  (width - SIDE_PADDING * 2 - CARD_GAP) / 2;
 
@@ -52,7 +52,7 @@ const ContentCard = ({ book }: { book: IChapter }) => {
       {/* Book Cover */}
       <View style={styles.bookCoverWrap}>
         <Image
-          source={{ uri: book.cover || "Cover.jpg" }}
+          source={{ uri: book.cover.it || "https://media.istockphoto.com/id/910535064/photo/education-concept-close-up-view-of-old-burning-candle-with-shabby-old-book-on-table-background.jpg?s=612x612&w=0&k=20&c=PqgSXdubvVAgGHC_NsRwGKVswJhK61uHN5msh5IzaJs=" }}
           style={styles.bookCover}
         />
 

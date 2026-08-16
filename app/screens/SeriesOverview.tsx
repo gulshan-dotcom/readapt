@@ -62,7 +62,7 @@ const DetailsPanel = ({ isOpen, onClose, data }: DetailsPanelProps) => {
 
   useEffect(() => {
     if (isOpen) {
-      translateY.value = withSpring(0, { damping: 60 });
+      translateY.value = withSpring(0, { damping: 100 });
     } else {
       translateY.value = withTiming(SHEET_HEIGHT);
     }
@@ -82,10 +82,11 @@ const DetailsPanel = ({ isOpen, onClose, data }: DetailsPanelProps) => {
     })
     .onEnd((event) => {
       if (event.translationY > 80 || event.velocityY > 500) {
-        handleClose();
+        runOnJS(handleClose)();
       } else {
-        translateY.value = withSpring(0, { damping: 45 });
+        translateY.value = withSpring(0, { damping: 105 });
       }
+    // ✅ Safely dispatch execution back to the JS thread
     });
 
   const animatedStyles = useAnimatedStyle(() => ({
@@ -418,7 +419,7 @@ const SeriesOverview = ({ route }: SeriesOverviewProps) => {
         <View style={styles.seriesInfo}>
           <Text style={styles.seriesTitle}>{seriesTitle}</Text>
           <Text style={styles.seriesAuthor}>
-            {new Date(seriesData.createdAt).toLocaleDateString()}
+            {seriesData?.chapters[0].content.author}
           </Text>
 
           {/* Scalable Badge using PopButton */}

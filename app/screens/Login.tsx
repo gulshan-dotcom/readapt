@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
-// import * as Google from "expo-auth-session/providers/google";
-// import * as WebBrowser from "expo-web-browser";
+import { View, Text, StyleSheet, Alert, ActivityIndicator } from "react-native";
 import * as SecureStore from "expo-secure-store";
-// import { makeRedirectUri } from "expo-auth-session";
+import {
+  GoogleSignin,
+  statusCodes,
+} from "@react-native-google-signin/google-signin";
 import useAuth from "../../hooks/useAuth";
 import Svg, { G, Path } from "react-native-svg";
-import axios from "axios";
 import { useToast } from "../../hooks/useToast";
 import { ParamListBase, RouteProp } from "@react-navigation/native";
 import pallete from "../../lib/Colors";
@@ -20,31 +20,17 @@ type Props = {
 
 const BACKEND_LOGIN_URL = "/auth/login";
 
-// WebBrowser.maybeCompleteAuthSession();
+// 1. Configure Google Sign-In outside or in useEffect
+GoogleSignin.configure({
+  // Get this from your Google Cloud Console / Firebase (OAuth 2.0 Client ID for Web)
+  webClientId: "743066184878-es8jqus96o8ip2qlrmd7md7n5o5j8ndv.apps.googleusercontent.com", 
+  offlineAccess: true, // Set to true if you need refresh tokens on your backend
+});
 
 const Login = ({ route, navigation }: Props) => {
   const [accessToken, isLoggedIn, isLoading] = useAuth();
   const { showToast } = useToast();
-  // const [request, response, promptAsync] = Google.useAuthRequest({
-  //   androidClientId:
-  //     "286065569518-rga0aatttorkd7va26ubs19negeb3itq.apps.googleusercontent.com",
-  //   redirectUri: makeRedirectUri({
-  //     native: "com.waves.kewat:/redirect",
-  //   }),
-  //   scopes: ["openid", "profile", "email"],
-  //   responseType: "token",
-  // });
-
   const [isLoadingUi, setIsLoadingUi] = useState(false);
-
-  // useEffect(() => {
-  //   if (response?.type === "success") {
-  //     const { authentication } = response;
-  //     if (authentication) {
-  //       handleBackendLogin(authentication.accessToken);
-  //     }
-  //   }
-  // }, [response]);
 
   useEffect(() => {
     if (isLoggedIn) {
@@ -52,40 +38,63 @@ const Login = ({ route, navigation }: Props) => {
     }
   }, [isLoading, isLoggedIn]);
 
-  // const handleBackendLogin = async (
-  //   googleAccessToken: string,
-  // ): Promise<void> => {
-  //   try {
-  //     const { data } = await api.post(BACKEND_LOGIN_URL, {
-  //       provider: "google",
-  //       googleAccessToken,
-  //     });
+  const handleGoogleSignIn = async () => {
+    try {
+      setIsLoadingUi(true);
 
-  //     await SecureStore.setItemAsync(
-  //       "accessToken",
-  //       JSON.stringify({ token: data.token, expiry: data.expiry }),
-  //     );
+      // Check if Play Services are available (Android)
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
-  //     showToast({
-  //       title: "You're Welcome"
-  //     });
+      // Perform native sign-in
+      const response = await GoogleSignin.signIn();
 
-  //     navigation.replace("HomeTabs");
-  //   } catch (err: any) {
-  //     Alert.alert("Error", err.message);
-  //   }
-  // };
+      // Retrieve tokens (idToken or accessToken depending on your backend contract)
+      console.log("token mil gaya: ", response.data?.idToken)
+      const idToken = response.data?.idToken;
+      const tokens = await GoogleSignin.getTokens(); // Returns { accessToken, idToken }
 
-  const dummyLogin = async () => {
-    await SecureStore.setItemAsync(
-      "accessToken",
-      JSON.stringify({
-        token:
-          "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2YTQxZGJiM2JhNGMwNjE1ZjM4ZGI5YmMiLCJlbWFpbCI6InJvbGVAdXNlci5jb20iLCJ1c2VySWQiOiJyb2xlIiwiaWF0IjoxNzg2MTYzMzQyLCJleHAiOjE3ODg3NTUzNDJ9.p1bjmIp-Fneiq6XdG_XfI_nmVXPBQc42fI_-cCP1LVA",
-        expiry: "1788755342572",
-      }),
-    );
-    navigation.replace("Tabs");
+      if (idToken || tokens.accessToken) {
+        await handleBackendLogin(tokens.accessToken || idToken);
+      } else {
+        throw new Error("Failed to retrieve Google tokens");
+      }
+    } catch (error: any) {
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        // User cancelled the sign-in flow
+        console.log("User cancelled Google Sign-In");
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        // Operation (e.g. sign in) is in progress already
+        console.log("Google Sign-In already in progress");
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        Alert.alert("Error", "Google Play Services are not available or updated.");
+      } else {
+        Alert.alert("Login Failed", error.message || "An unexpected error occurred.");
+      }
+    } finally {
+      setIsLoadingUi(false);
+    }
+  };
+
+  const handleBackendLogin = async (googleAccessToken: string): Promise<void> => {
+    try {
+      const { data } = await api.post(BACKEND_LOGIN_URL, {
+        provider: "google",
+        googleAccessToken,
+      });
+
+      await SecureStore.setItemAsync(
+        "accessToken",
+        JSON.stringify({ token: data.token, expiry: data.expiry })
+      );
+
+      showToast({
+        title: "You're Welcome",
+      });
+
+      navigation.replace("Tabs");
+    } catch (err: any) {
+      Alert.alert("Error", err.response?.data?.message || err.message || "Backend login failed");
+    }
   };
 
   return (
@@ -97,13 +106,15 @@ const Login = ({ route, navigation }: Props) => {
         </View>
 
         {isLoadingUi ? (
-          <Text style={styles.processingText}>Processing login...</Text>
+          <View style={styles.loadingWrapper}>
+            <ActivityIndicator size="small" color={pallete.textwhite} />
+            <Text style={styles.processingText}>Processing login...</Text>
+          </View>
         ) : (
           <PopButton
             styles={styles.googleButton}
-            // activeOpacity={0.9}
-            // onPress={() => promptAsync()}
-            onPress={() => dummyLogin()}>
+            onPress={handleGoogleSignIn}
+          >
             <Svg width={20} height={20} viewBox="0 0 32 32">
               <G>
                 <Path
@@ -201,6 +212,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     color: "#64646b",
+  },
+
+  loadingWrapper: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
   },
 
   processingText: {

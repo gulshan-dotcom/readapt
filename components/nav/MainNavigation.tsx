@@ -17,6 +17,7 @@ import BackNav from "./BackNav";
 import RecentReads from "../../app/screens/history/RecentReads";
 import LikedContent from "../../app/screens/history/LikedContent";
 import About from "../../app/screens/About";
+import SplashScreen from "../../app/screens/Splash";
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -27,6 +28,7 @@ export type RootStackParamList = {
   Subscription: undefined;
   About: undefined;
   RecentReads: undefined;
+  Splash: undefined;
   LikedContent: undefined;
 };
 
@@ -36,7 +38,7 @@ const Stack = createStackNavigator<RootStackParamList>();
 export default function MainNavigation() {
   const [accessToken, isLoggedIn, isLoading] = useAuth();
   const [initialPage, setinitialPage] =
-    useState<keyof RootStackParamList>("Login");
+    useState<keyof RootStackParamList>("Splash");
 
   useEffect(() => {
     if (!isLoading) {
@@ -102,6 +104,10 @@ export default function MainNavigation() {
 
           <Stack.Screen name="About">
             {(props) => <About {...props} />}
+          </Stack.Screen>
+
+          <Stack.Screen name="Splash">
+            {(props) => <SplashScreen {...props} />}
           </Stack.Screen>
 
           <Stack.Screen name="Subscription" component={Subscription} />

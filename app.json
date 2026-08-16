@@ -9,7 +9,13 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+"bundleIdentifier": "com.anonymous.waves","infoPlist": {
+        "UIBackgroundModes": ["audio"],
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false
+        }
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -20,10 +26,17 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.DOWNLOAD_WITHOUT_NOTIFICATION",
-        "android.permission.ACCESS_NETWORK_STATE"
+"android.permission.INTERNET",
+  "android.permission.ACCESS_NETWORK_STATE",
+  "android.permission.READ_EXTERNAL_STORAGE",
+  "android.permission.WRITE_EXTERNAL_STORAGE",
+  "android.permission.DOWNLOAD_WITHOUT_NOTIFICATION",
+  "android.permission.FOREGROUND_SERVICE",
+  "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+  "android.permission.POST_NOTIFICATIONS",
+"android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+  "android.permission.WAKE_LOCK"
       ],
       "package": "com.anonymous.waves"
     },
@@ -31,12 +44,18 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+"expo-notifications",
       "expo-secure-store",
       "expo-web-browser",
       "@react-native-google-signin/google-signin",
       "@config-plugins/react-native-pdf",
       "@config-plugins/react-native-blob-util",
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true
+        }
+      ]
     ],
     "extra": {
       "eas": {

@@ -149,7 +149,7 @@ const AllStuffIcon = () => {
 const { width } = Dimensions.get("window");
 
 const CARD_GAP = 5;
-const SIDE_PADDING = 12;
+const SIDE_PADDING = 22;
 
 // 2 cards visible
 const CARD_WIDTH = (width - SIDE_PADDING * 2 - CARD_GAP) / 2;
