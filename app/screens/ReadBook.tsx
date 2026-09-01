@@ -1,18 +1,15 @@
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Pdf from "react-native-pdf";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import Pdf, { Source } from "react-native-pdf";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
     View,
     Text,
     StyleSheet,
-    Image,
     TouchableOpacity,
     Animated,
     Dimensions,
-    StatusBar,
     ActivityIndicator,
     InteractionManager,
-    Platform,
 } from "react-native";
 import { Gesture } from "react-native-gesture-handler";
 import Svg, { Path, Line, Circle, Polyline } from "react-native-svg";
@@ -27,6 +24,7 @@ import { useToast } from "../../hooks/useToast";
 import { useUser } from "../../hooks/useUser";
 import CommentsDrawer from "../../components/props/Comments";
 import { SubscriptionPlan } from "../../enums";
+import * as FileSystem from 'expo-file-system/legacy';
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 const MORPH_DISTANCE = 100;
 const CONTAINER_PADDING_TOP = 75;
@@ -39,7 +37,7 @@ const CARD_HEIGHT = SCREEN_HEIGHT * CARD_SCALE;
 const CARD_RADIUS = 12;
 const CARD_HORIZONTAL_MARGIN =
     (SCREEN_WIDTH - PLAYER_CONTAINER_PADDING * 2 - CARD_WIDTH) / 2;
-const INITIAL_CENTER_X = SCREEN_WIDTH / 2;
+// const INITIAL_CENTER_X = SCREEN_WIDTH / 2;
 const INITIAL_CENTER_Y = SCREEN_HEIGHT / 2;
 const CARD_LEFT_ESTIMATE = (SCREEN_WIDTH - CARD_WIDTH) / 2;
 const CARD_TOP_ESTIMATE =
@@ -94,19 +92,94 @@ type BookPopulated = {
     createdAt: Date;
     updatedAt: Date;
 };
-const pdfUri =
-    'data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iaiA8PCAvVHlwZSAvQ2F0YWxvZyAvUG' +
-    'FnZXMgMiAwIFIgPj4gZW5kb2JqCjIgMCBvYmogPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFszIDAgUiA0' +
-    'IDAgUl0gL0NvdW50IDIgPj4gZW5kb2JqCjMgMCBvYmogPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyID' +
-    'AgUiAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvTWVkaWFCb3ggWzAgMCA2' +
-    'MTIgNzkyXSAvQ29udGVudHMgNiAwIFIgPj4gZW5kb2JqCjQgMCBvYmogPDwgL1R5cGUgL1BhZ2UgL1' +
-    'BhcmVudCAyIDAgUiAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSA1IDAgUiA+PiA+PiAvTWVkaWFC' +
-    'b3ggWzAgMCA2MTIgNzkyXSAvQ29udGVudHMgNyAwIFIgPj4gZW5kb2JqCjUgMCBvYmogPDwgL1R5cG' +
-    'UgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+IGVuZG9iago2IDAg' +
-    'b2JqIDw8IC9MZW5ndGggNDQgPj4gc3RyZWFtCkJUIC9GMSAyNCBUZiAxMDAgNzAwIFREIChUaGlzIG' +
-    'lzIFBhZ2UgMSkgVGogRVQKZW5kc3RyZWFtIGVuZG9iago3IDAgb2JqIDw8IC9MZW5ndGggNDQgPj4g' +
-    'c3RyZWFtCkJUIC9GMSAyNCBUZiAxMDAgNzAwIFREIChUaGlzIGlzIFBhZ2UgMikgVGogRVQKZW5kc3' +
-    'RyZWFtIGVuZG9iagp0cmFpbGVyIDw8IC9Sb290IDEgMCBSID4+CiUlRU9G';
+
+import Carousel, { ICarouselInstance } from 'react-native-reanimated-carousel';
+
+export interface PdfCarouselRef {
+    jumpToPage: (page: number) => void;
+}
+
+interface PdfCarouselViewerProps {
+    pdfSource: { uri: string | null; cache: boolean };
+    isProgrammaticSwipe: boolean;
+    currentPage: number;
+    totalPages: number;
+    setProgrammaticSwipe: (state: boolean) => void;
+    onPageChange?: (page: number) => void;
+}
+
+const PdfCarouselViewer = forwardRef<PdfCarouselRef, PdfCarouselViewerProps>(({
+    pdfSource,
+    isProgrammaticSwipe,
+    currentPage,
+    totalPages,
+    setProgrammaticSwipe,
+    onPageChange,
+}, ref) => {
+    const carouselRef = useRef<ICarouselInstance>(null);
+
+    useImperativeHandle(ref, () => ({
+        jumpToPage(page: number) {
+            if (carouselRef.current && page >= 1 && page <= totalPages) {
+                carouselRef.current.scrollTo({ index: page - 1, animated: true });
+            }
+        }
+    }));
+
+    const pagesData = useMemo(() => {
+        const pages = [];
+
+        for (let i = 1; i <= totalPages; i++) {
+            pages.push(i);
+        }
+
+        return pages;
+    }, [totalPages]);
+
+    return (
+        <View style={styles.pdfcontainer}>
+            {totalPages > 0 && (
+                <Carousel
+                    ref={carouselRef}
+                    loop={false}
+                    width={CARD_WIDTH}
+                    height={CARD_HEIGHT}
+                    data={pagesData}
+                    defaultIndex={currentPage - 1}
+                    onSnapToItem={(index) => { if (onPageChange && !isProgrammaticSwipe) { onPageChange(index + 1) } else { setProgrammaticSwipe(false) } }}
+                    onConfigurePanGesture={(gestureChain) =>
+                        gestureChain.activeOffsetX([-15, 15]).failOffsetY([-10, 10])
+                    }
+                    renderItem={({ item: pageNum, index }) => {
+                        const distance = Math.abs(index - (currentPage - 1));
+
+                        if (distance > 2) {
+                            return <View style={styles.pageContainer} />;
+                        }
+
+                        return (
+                            <View style={styles.pageContainer}>
+                                <Pdf
+                                    source={pdfSource}
+                                    page={pageNum}
+                                    singlePage={true}
+                                    style={styles.pdfImage}
+                                    enablePaging={false}
+                                    enableAnnotationRendering={false}
+                                    onError={(err) =>
+                                        console.log(`Error rendering page ${pageNum}:`, err)
+                                    }
+                                />
+                            </View>
+                        );
+                    }}
+                />
+            )}
+        </View>
+    );
+})
+
+const pdfUri = "https://sample-files.com/downloads/documents/pdf/sample-10-page-pdf-a4-size.pdf"
 const BookReaderScreen = ({ route, navigation }: Props) => {
     const scrollRef = useRef<Animated.ScrollView>(null);
     const insets = useSafeAreaInsets();
@@ -115,21 +188,28 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
     const currentScrollYRef = useRef(0);
     const scrollDirectionRef = useRef<"up" | "down" | null>(null);
     const isSnappingRef = useRef(false);
+    const isProgrammaticSwipe = useRef(false);
     const morphSpringRef = useRef<Animated.CompositeAnimation | null>(null);
+
+    const chapterId = route.params.bookId;
+    const carouselViewerRef = useRef<PdfCarouselRef>(null);
+
     const [accessToken] = useAuth();
+    const { showToast } = useToast();
+    const { user, reload } = useUser();
+
     const [book, setBook] = useState<BookPopulated | null>();
     const [isLoading, setIsLoading] = useState(true);
     const [lastOpenPage, setLastOpenPage] = useState(1);
     const [currentPage, setCurrentPage] = useState(1);
-    const { showToast } = useToast();
     const [isLiked, setIsLiked] = useState(false);
-    const { user, reload } = useUser();
     const [showComments, setShowComments] = useState(false);
-    const chapterId = route.params.bookId;
     const [isTocOpen, setIsTocOpen] = useState(false);
     const [isLocked, setIsLocked] = useState(false);
-    const [isPdfInteracting, setIsPdfInteracting] = useState(false);
-    const halfPdfRef = useRef<Pdf>(null);
+    const [pdfPath, setPdfPath] = useState<string | null>(null)
+    const [totalPages, setTotalPages] = useState(0)
+    const fullPdfRef = useRef<Pdf>(null);
+    const [showPdfControls, setShowPdfControls] = useState(true)
 
     const [cardTarget, setCardTarget] = useState({
         x: CARD_LEFT_ESTIMATE,
@@ -138,13 +218,15 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
         height: CARD_HEIGHT,
     });
     const pdfFrameRef = useRef<View>(null);
+    console.log(CARD_LEFT_ESTIMATE, SCREEN_WIDTH, CARD_WIDTH, "card otopins")
     const measureCardPosition = () => {
         if (currentScrollYRef.current > 2) return;
         const doMeasure = () => {
             pdfFrameRef.current?.measureInWindow((x, y, width, height) => {
                 if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+                console.log(x, "Card x")
                 setCardTarget({
-                    x: x - CARD_HORIZONTAL_MARGIN - PDF_FRAME_MARGIN_TOP - PLAYER_CONTAINER_PADDING,
+                    x: x + SCREEN_WIDTH / 2,
                     y: y - MORPH_DISTANCE - insets.top +
                         SCROLLVIEW_MARGIN_TOP +
                         PLAYER_CONTAINER_PADDING +
@@ -171,9 +253,47 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
     useEffect(() => {
         fetchChapter();
     }, [accessToken]);
+
+    useEffect(() => {
+        const loadPdf = async () => {
+            console.log("fetching pdf")
+            try {
+                console.log("Checking PDF cache...");
+                const targetDir = FileSystem.documentDirectory;
+                const path = `${targetDir}myfile.pdf`;
+
+                const fileInfo = await FileSystem.getInfoAsync(path);
+
+                if (fileInfo.exists) {
+                    console.log("Loaded from local cache:", fileInfo.uri);
+                    setPdfPath(fileInfo.uri);
+                    return;
+                }
+
+                console.log("File not cached. Fetching remote PDF...");
+                const result = await FileSystem.downloadAsync(pdfUri, path);
+
+                console.log("Downloaded and cached to:", result.uri);
+                setPdfPath(result.uri);
+            } catch (err) {
+                console.log(err, "rnby err")
+            }
+        }
+        loadPdf();
+    }, []);
+
+    const pdfSource = useMemo(
+        () => ({
+            uri: pdfPath,
+            cache: true,
+        }),
+        [pdfPath]
+    );
+
     const handleScroll = Animated.event(
         [{ nativeEvent: { contentOffset: { y: scrollY } } }],
         {
+
             useNativeDriver: true,
             listener: (e: any) => {
                 const y = e.nativeEvent.contentOffset.y;
@@ -202,7 +322,6 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
     };
     const handleScrollBeginDrag = () => {
         isSnappingRef.current = false;
-        // optional: stop any in-flight spring so the finger feels direct
         morphSpringRef.current?.stop();
     };
     const snapToNearestState = (y: number) => {
@@ -210,14 +329,10 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
             isSnappingRef.current = false;
             return;
         }
-
-        // Small state reached by cross button / downward movement.
         if (y >= MORPH_DISTANCE) {
             isSnappingRef.current = false;
             return;
         }
-
-        // While going upward, return to fullscreen.
         if (scrollDirectionRef.current === "up") {
             snapTo(0);
         } else {
@@ -262,7 +377,7 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
     });
     const targetCenterX = cardTarget.x + cardTarget.width / 2;
     const targetCenterY = cardTarget.y + cardTarget.height / 2;
-    const translateXTo = targetCenterX - INITIAL_CENTER_X;
+    const translateXTo = targetCenterX - SCREEN_WIDTH;
     const translateYTo = targetCenterY - INITIAL_CENTER_Y;
     const translateX = progress.interpolate({
         inputRange: [0, 1],
@@ -347,14 +462,6 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
         });
     };
 
-    const pdfSource = useMemo(
-        () => ({
-            uri: pdfUri,
-            cache: true,
-        }),
-        [book?.media]
-    );
-
     return (
         <View style={styles.container}>
             <Animated.ScrollView
@@ -365,7 +472,7 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                 onMomentumScrollEnd={handleMomentumScrollEnd}
                 style={styles.scrollView}
                 scrollEventThrottle={16}
-                scrollEnabled={!isLoading && !isPdfInteracting}
+                scrollEnabled={!isLoading}
                 showsVerticalScrollIndicator={false}>
                 <View style={styles.falseHeight}></View>
                 {/* Main Content */}
@@ -378,25 +485,29 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                         {book?.media ? (
                             <View
                                 style={styles.pdfTouchArea}
-                            
+
                             >
-                                <Pdf
-                                ref={halfPdfRef}
-                                    trustAllCerts={false}
-                                    source={pdfSource}
-                                    singlePage={false}
-                                    horizontal={true}
-                                    enablePaging={true}
-                                    fitPolicy={0}
-                                    style={styles.pdfImage}
-                                    onPageChanged={(page) => {
-                                        console.log("111 111 first")
-                                        setCurrentPage(page);
-                                    }}
-                                    onError={(error) => {
-                                        console.error("PDF error:", error);
-                                    }}
-                                />
+                                {
+                                    pdfPath ?
+                                        <PdfCarouselViewer ref={carouselViewerRef} pdfSource={pdfSource} currentPage={currentPage}
+                                            setProgrammaticSwipe={(state) => isProgrammaticSwipe.current = state}
+                                            isProgrammaticSwipe={isProgrammaticSwipe.current} totalPages={totalPages} onPageChange={(page) => {
+                                                console.log("small page changed trigger")
+                                                if (page !== currentPage) {
+                                                    console.log("small page changed trigger passed")
+                                                    setTimeout(() => {
+                                                        console.log("small page changed trigger passed, ", fullPdfRef.current, page)
+                                                        if (fullPdfRef.current) {
+                                                            fullPdfRef.current.setPage(page);
+                                                            console.log("small page changed trigger passed, ", page)
+                                                        }
+                                                    }, 500);
+                                                    setCurrentPage(page);
+                                                }
+                                            }} />
+                                        : <ActivityIndicator color="white" />
+                                }
+
                             </View>
                         ) : (
                             <View style={[styles.pdfImage, styles.pdfPlaceholder]}>
@@ -444,6 +555,10 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                 <View style={styles.section}>
                     <View style={styles.sectionHeader}>
                         <Text style={styles.sectionTitle}>Next Chapters</Text>
+<Text style={styles.sectionTitle}>Next Chapters</Text>
+<Text style={styles.sectionTitle}>Next Chapters</Text>
+<Text style={styles.sectionTitle}>Next Chapters</Text>
+<Text style={styles.sectionTitle}>Next Chapters</Text>
                     </View>
                     <View style={styles.booksGrid}>
                         {/* Add your ContentCard components here */}
@@ -451,7 +566,7 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                 </View>
             </Animated.ScrollView>
             <Animated.View
-                pointerEvents="box-none"
+                pointerEvents={isLocked ? "none" : "auto"}
                 style={[
                     styles.morphFrame,
                     {
@@ -464,7 +579,7 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                         ],
                     },
                 ]}>
-                {!isLocked && (
+                {!isLocked && showPdfControls && (
                     <TouchableOpacity
                         style={[
                             styles.fullscreenClose,
@@ -490,32 +605,49 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                             borderRadius,
                         },
                     ]}>
-                    {book?.media ?
-                        <Pdf
-                            trustAllCerts={false}
-                            source={pdfSource}
-                            singlePage={false}
-                            horizontal={true}
-                            enablePaging={true}
-                            fitPolicy={0}
-                            style={styles.pdfImage}
-                            onPageChanged={(page) => {
-                                halfPdfRef.current?.setPage(page);
-                                console.log(halfPdfRef)
-                                setCurrentPage(page);
-                            }}
-                            onError={(error) => {
-                                console.error("PDF error:", error);
-                            }}
-                        />
-                        : (
-                            <View style={styles.pdfPlaceholder}>
-                                <ActivityIndicator color={pallete.accent} />
-                            </View>
-                        )}
+                    {
+                        book?.media && pdfPath ?
+                            <Pdf
+                                trustAllCerts={false}
+                                source={pdfSource}
+                                ref={fullPdfRef}
+                                singlePage={false}
+                                horizontal={true}
+                                enablePaging={true}
+                                fitPolicy={0} spacing={10}
+                                onLoadComplete={(numberOfPages) => setTotalPages(numberOfPages)}
+                                style={styles.pdfImage}
+                                onScaleChanged={scale => {
+                                    if (scale === 1) {
+                                        setShowPdfControls(true)
+                                    } else {
+                                        setShowPdfControls(false)
+                                    }
+                                }}
+                                onPageChanged={(page) => {
+                                    console.log("LARGE PDF page changed:", page);
+                                    if (page !== currentPage) {
+                                        console.log("changed small PDF in loop for:", page);
+                                        if (page >= 1 && page <= totalPages) {
+                                            isProgrammaticSwipe.current = true
+                                            carouselViewerRef.current?.jumpToPage(page);
+                                        }
+                                        setCurrentPage(page);
+                                    }
+                                }}
+                                onError={(error) => {
+                                    console.error("PDF error:", error);
+                                }}
+                            />
+                            : (
+                                <View style={styles.pdfPlaceholder}>
+                                    <ActivityIndicator color={pallete.accent} />
+                                </View>
+                            )
+                    }
                 </Animated.View>
             </Animated.View>
-            {isTocOpen && (
+            {!isTocOpen && (
                 <>
                     <TouchableOpacity
                         style={styles.tocBackdrop}
@@ -525,18 +657,13 @@ const BookReaderScreen = ({ route, navigation }: Props) => {
                     <Animated.View style={styles.tocSideSheet}>
                         <Text style={styles.tocHeader}>TABLE OF CONTENTS</Text>
                         <View style={styles.tocList}>
-                            {[
-                                "Introduction",
-                                "The Ego Illusion",
-                                "Social Conditioning",
-                                "Emotional Discipline",
-                            ].map((ch, i) => (
-                                <View key={i} style={styles.tocChip}>
-                                    <Text style={styles.chipName}>{ch}</Text>
+                            {book?.toc.map((ch, i) => (
+                                <PopButton key={i} styles={styles.tocChip} onPress={()=> setCurrentPage(i + 1)}>
+                                    <Text style={styles.chipName}>{ch.title}</Text>
                                     <Text style={styles.chipPage}>
-                                        P. {String(10 + i * 12).padStart(2, "0")}
+                                        P. {String(ch.cut).padStart(2, "0")}
                                     </Text>
-                                </View>
+                                </PopButton>
                             ))}
                         </View>
                     </Animated.View>
@@ -601,6 +728,16 @@ const styles = StyleSheet.create({
         backgroundColor: pallete.bgmain,
         paddingTop: CONTAINER_PADDING_TOP,
     },
+    pdfcontainer: {
+        flex: 1,
+        backgroundColor: pallete.bgmain,
+    },
+
+    pageContainer: {
+        flex: 1,
+        width: CARD_WIDTH,
+        height: CARD_HEIGHT,
+    },
     scrollView: {
         marginTop: SCROLLVIEW_MARGIN_TOP,
     },
@@ -635,13 +772,13 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     morphFrameInner: {
-       width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT,
-    backgroundColor: "#12121c",
-    overflow: "hidden",
-    borderColor: "rgba(255,255,255,0.08)",
-    alignItems: "center",
-    justifyContent: "center",
+        width: SCREEN_WIDTH,
+        height: SCREEN_HEIGHT,
+        backgroundColor: "#12121c",
+        overflow: "hidden",
+        borderColor: "rgba(255,255,255,0.08)",
+        alignItems: "center",
+        justifyContent: "center",
     },
     pdfTouchArea: {
         width: "100%",
@@ -710,8 +847,10 @@ const styles = StyleSheet.create({
     },
     tocHeader: {
         fontSize: 12,
+        marginTop : 15,
         fontWeight: "700",
         color: pallete.accent,
+        textAlign: "center",
         textTransform: "uppercase",
         letterSpacing: 1,
         marginBottom: 20,
@@ -727,7 +866,7 @@ const styles = StyleSheet.create({
         justifyContent: "space-between",
         alignItems: "center",
     },
-    chipName: { color: "#e5e7eb", fontSize: 14, fontWeight: "500" },
+    chipName: { color: "#e5e7eb", fontSize: 14, fontWeight: "500"},
     chipPage: {
         fontSize: 12,
         fontWeight: "700",

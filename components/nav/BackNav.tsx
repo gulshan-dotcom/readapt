@@ -25,10 +25,11 @@ const BackNav = ({
   const insets = useSafeAreaInsets()
 
   return (
-    <View style={[styles.navbarContainer, { top: insets.top, }]}>
+    <View style={[styles.navbarContainer, {paddingTop: insets.top + 5}]}>
       <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill} />
 
-      <View style={styles.navbarContent}>
+      <View style={[styles.navbarContent, {
+    height: 30 + insets.top,}]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={onBackPress}
@@ -85,7 +86,7 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   navbarContent: {
-    height: 65,
+    // height: 65,
     width: width,
     flexDirection: "row",
     justifyContent: "space-between",

@@ -1,9 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React from "react";
 import { View } from "react-native";
-import useAuth from "../../../hooks/useAuth";
-import { IUser } from "../../../types/User";
-import { useToast } from "../../../hooks/useToast";
-import { api } from "../../../lib/api";
 import ContentCard from "../../../components/props/ContentCard";
 import { FlatList, StyleSheet, Text } from "react-native";
 import { useUser } from "../../../hooks/useUser";
@@ -11,7 +7,6 @@ import pallete from "../../../lib/Colors";
 
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../../components/nav/MainNavigation";
-import { IChapter } from "../../../types/Chapter";
 
 type Props = NativeStackScreenProps<RootStackParamList, "LikedContent">;
 

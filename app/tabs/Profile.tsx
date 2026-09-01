@@ -29,7 +29,7 @@ import { useImageUploader } from "../../lib/uploadthing";
 import { useToast } from "../../hooks/useToast";
 import { getLevelTitle } from "../../lib/levels";
 import { useStreak } from "../../hooks/useStreak";
-
+import * as SecureStore from "expo-secure-store";
 const { width, height } = Dimensions.get("window");
 
 // Level colors
@@ -66,7 +66,6 @@ const ProfileScreen = () => {
     onClientUploadComplete: (res: any) => {
       const uploadedFile = res[0];
       showToast({ title: "Success Profile image updated!" });
-      console.log("Direct storage URL:", uploadedFile.ufsUrl);
       reload();
     },
     onUploadError: (error: any) => {
@@ -161,8 +160,11 @@ const ProfileScreen = () => {
 
   const handleLogout = async () => {
     // Your logout logic here
-    // await SecureStore.deleteItemAsync("acessToken");
-    // navigation.reset(...);
+    await SecureStore.deleteItemAsync("accessToken");
+    navigation.reset({
+    index: 0,
+    routes: [{ name: "Login" }],
+  });
   };
 
   const updateUsername = async () => {

@@ -1,4 +1,4 @@
-import { NavigationContainer } from "@react-navigation/native";
+import { createNavigationContainerRef, NavigationContainer } from "@react-navigation/native";
 import { createStackNavigator } from "@react-navigation/stack";
 import {
   SafeAreaProvider,
@@ -18,6 +18,8 @@ import RecentReads from "../../app/screens/history/RecentReads";
 import LikedContent from "../../app/screens/history/LikedContent";
 import About from "../../app/screens/About";
 import SplashScreen from "../../app/screens/Splash";
+import { useUser } from "../../hooks/useUser";
+import AudioControls from "../props/AudioControls";
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -32,19 +34,31 @@ export type RootStackParamList = {
   LikedContent: undefined;
 };
 
+export const navigationRef = createNavigationContainerRef()
+
 // FIX: Move this out here so it never gets recreated on re-renders
 const Stack = createStackNavigator<RootStackParamList>();
 
 export default function MainNavigation() {
-  const [accessToken, isLoggedIn, isLoading] = useAuth();
+  const [isLoggedIn, isLoading] = useAuth();
+  const {user, loadingUser} = useUser()
   const [initialPage, setinitialPage] =
     useState<keyof RootStackParamList>("Splash");
+
+  const checkSubscription = async () => {
+    const now = new Date()
+    if(user?.subscription.plan && user.subscription.expiresOn) {
+      const expiryDate = new Date(user?.subscription.expiresOn)
+      console.log(now, expiryDate)
+    }
+  }
 
   useEffect(() => {
     if (!isLoading) {
       if (!isLoggedIn) {
         setinitialPage("Login");
       } else {
+        checkSubscription()
         setinitialPage("Tabs");
       }
     }
@@ -52,7 +66,7 @@ export default function MainNavigation() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
+      <NavigationContainer ref={navigationRef}>
         <Stack.Navigator
           initialRouteName={initialPage}
           screenOptions={({ navigation }) => ({

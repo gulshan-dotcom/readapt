@@ -13,24 +13,22 @@ import { RootStackParamList } from '../../components/nav/MainNavigation';
 import useAuth from '../../hooks/useAuth';
 import { useToast } from '../../hooks/useToast';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 type Props = NativeStackScreenProps<RootStackParamList, "Splash">;
 
 const SplashScreen = ({ route, navigation }: Props) => {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(0.86)).current;
-  const accentOpacity = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0.5)).current;
+  const scale = useRef(new Animated.Value(0.66)).current;
+  const transform = useRef(new Animated.Value(50)).current;
 
   const [accessToken, isLoggedIn, isLoading] = useAuth();
 
   useEffect(() => {
     if (!isLoading) {
-      console.log("first reload")
       if (!isLoggedIn) {
         navigation.replace("Login");
       } else {
-
         navigation.replace("Tabs");
       }
     }
@@ -50,8 +48,8 @@ const SplashScreen = ({ route, navigation }: Props) => {
         tension: 40,
         useNativeDriver: true,
       }),
-      Animated.timing(accentOpacity, {
-        toValue: 1,
+      Animated.timing(transform, {
+        toValue: 0,
         duration: 900,
         delay: 300,
         useNativeDriver: true,
@@ -63,20 +61,17 @@ const SplashScreen = ({ route, navigation }: Props) => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={pallete.bgmain || '#090314'} />
 
-      {/* Soft accent glow behind logo */}
-      <Animated.View
-        style={[
-          styles.glow,
-          { opacity: accentOpacity },
-        ]}
-      />
-
-      <Animated.View
+      <View
         style={[
           styles.logoWrap,
+        ]}
+      >
+      <Animated.View
+        style={[
+          styles.logoWrapAmin,
           {
             opacity,
-            transform: [{ scale }],
+            transform: [{ scale }, { translateY: transform }],
           },
         ]}
       >
@@ -85,7 +80,14 @@ const SplashScreen = ({ route, navigation }: Props) => {
           style={styles.logo}
           resizeMode="contain"
         />
-      </Animated.View>
+        </Animated.View>
+
+        <Image
+          source={require("../../assets/textIcon.png")}
+          style={styles.logoImage}
+          resizeMode="contain"
+        />
+      </View>
     </View>
   );
 };
@@ -93,21 +95,31 @@ const SplashScreen = ({ route, navigation }: Props) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    height: height,
     backgroundColor: pallete.bgmain || '#090314',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 9999,
   },
   glow: {
     position: 'absolute',
     width: width * 0.55,
     height: width * 0.55,
     borderRadius: width * 0.3,
-    backgroundColor: pallete.accent || '#01796F',
-    opacity: 0.12,
+    backgroundColor: '#2C3E50',
   },
   logoWrap: {
+    paddingTop: 250,
     alignItems: 'center',
-    justifyContent: 'center',
+    height: height,
+    justifyContent: 'space-between',
+  },
+  logoWrapAmin: {
+    opacity: 0.5,
+  },
+  logoImage: {
+    width: 430,
+    height: 180,
   },
   logo: {
     width: width * 0.38,

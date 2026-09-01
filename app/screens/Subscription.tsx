@@ -1,10 +1,9 @@
-
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from "../../components/nav/MainNavigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Subscription'>;
-
-import React from 'react';
+import useAuth from "../../hooks/useAuth";
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,17 +11,28 @@ import {
   ScrollView,
   Pressable,
   FlatList,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
-import Svg, { Path, Polyline, Line } from 'react-native-svg';
+import Svg, { Polyline, Line } from 'react-native-svg';
+import * as WebBrowser from 'expo-web-browser';
+import * as Linking from 'expo-linking';
 import pallete from '../../lib/Colors';
+import { useUser } from '../../hooks/useUser';
+import { useToast } from '../../hooks/useToast';
+import { api } from '../../lib/api';
+
 const CARD_WIDTH = 290;
 const CARD_GAP = 16;
+const NEXT_API_URL = 'https://redapt-admin-git-main-gulshan-dotcoms-projects.vercel.app/api/userapi/user';
 
 const PLANS = [
   {
     id: 'basic',
+    index: 1,
     name: 'Basic',
-    price: '₹29',
+    price: '₹19',
+    numericPrice: 19,
     duration: '30 Days Validity',
     featured: false,
     features: ['Eligible content access', 'Post comments support'],
@@ -30,8 +40,10 @@ const PLANS = [
   },
   {
     id: 'standard',
+    index: 2,
     name: 'Standard',
-    price: '₹69',
+    price: '₹49',
+    numericPrice: 49,
     duration: '30 Days Validity',
     featured: true,
     features: [
@@ -43,8 +55,10 @@ const PLANS = [
   },
   {
     id: 'pro',
+    index: 3,
     name: 'Pro',
-    price: '₹149',
+    price: '₹99',
+    numericPrice: 99,
     duration: '40 Days Validity',
     featured: false,
     features: [
@@ -57,55 +71,85 @@ const PLANS = [
 ];
 
 const COMPARISON = [
-  {
-    feature: 'Content Access',
-    basic: 'Eligible',
-    standard: 'Eligible',
-    pro: 'All Access',
-  },
-  {
-    feature: 'Post Comment',
-    basic: true,
-    standard: true,
-    pro: true,
-  },
-  {
-    feature: 'Download Support',
-    basic: false,
-    standard: true,
-    pro: true,
-  },
-  {
-    feature: 'Audio Transcription',
-    basic: false,
-    standard: true,
-    pro: true,
-  },
-  {
-    feature: 'Background Play',
-    basic: false,
-    standard: false,
-    pro: true,
-  },
-  {
-    feature: 'Duration',
-    basic: '30 Days',
-    standard: '30 Days',
-    pro: '40 Days',
-  },
+  { feature: 'Content Access', basic: 'Eligible', standard: 'Eligible', pro: 'All Access' },
+  { feature: 'Post Comment', basic: true, standard: true, pro: true },
+  { feature: 'Download Support', basic: false, standard: true, pro: true },
+  { feature: 'Audio Transcription', basic: false, standard: true, pro: true },
+  { feature: 'Background Play', basic: false, standard: false, pro: true },
+  { feature: 'Duration', basic: '30 Days', standard: '30 Days', pro: '40 Days' },
 ];
 
-const Subscription = ({route, navigation} : Props) => {
+const Subscription = ({ route, navigation }: Props) => {
+  const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
+  const [accessToken] = useAuth();
+  const { user, reload } = useUser()
+  const { showToast } = useToast()
+
+  useEffect(() => {
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+    return () => subscription.remove();
+  }, []);
+
+  const handleDeepLink = (event: { url: string }) => {
+    WebBrowser.dismissBrowser();
+
+    const data = Linking.parse(event.url);
+    if (data.path === 'payment-callback') {
+      const razorpayPaymentId = data.queryParams?.razorpay_payment_id;
+      const razorpayStatus = data.queryParams?.razorpay_payment_link_status;
+
+      if (razorpayStatus === 'paid' || razorpayPaymentId) {
+        Alert.alert('Payment Successful', 'Your subscription is now active!');
+      } else {
+        Alert.alert('Payment Status', 'Payment completed or pending status check.');
+      }
+    }
+  };
+
+  const handlePayment = async (plan: typeof PLANS[0]) => {
+    try {
+      if (!user) {
+        showToast({ title: 'Please try again later.', time: 3000 });
+        return;
+      }
+
+      setLoadingPlanId(plan.id);
+
+      // 1. Get Razorpay payment link from Next.js backend
+      const response = await fetch(`${NEXT_API_URL}/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, },
+        body: JSON.stringify({
+          amount: plan.numericPrice,
+          planId: plan.index,
+          user,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.url) throw new Error(data.error || 'Failed to create payment link');
+
+      const result = await WebBrowser.openAuthSessionAsync(
+        data.url,
+        Linking.createURL('payment-callback')
+      );
+
+      if (result.type === 'cancel' || result.type === 'dismiss') {
+        const res = api.post("/payment/fail")
+        showToast({ title: 'Payment Cancelled', });
+      }
+    } catch (error: any) {
+      showToast({ title: error.message || 'Something went wrong' });
+    } finally {
+      reload()
+      setLoadingPlanId(null);
+    }
+  };
 
   const renderCheck = (value: boolean | string, highlight = false) => {
     if (typeof value === 'string') {
       return (
-        <Text
-          style={[
-            styles.compValue,
-            highlight && { color: '#4ade80', fontWeight: '700' },
-          ]}
-        >
+        <Text style={[styles.compValue, highlight && { color: '#4ade80', fontWeight: '700' }]}>
           {value}
         </Text>
       );
@@ -123,7 +167,7 @@ const Subscription = ({route, navigation} : Props) => {
     );
   };
 
-  const renderPlan = ({ item }: { item: (typeof PLANS)[0] }) => (
+  const renderPlan = ({ item }: { item: (typeof PLANS)[0] }) =>  (
     <Pressable
       style={({ pressed }) => [
         styles.planCard,
@@ -167,36 +211,36 @@ const Subscription = ({route, navigation} : Props) => {
       </View>
 
       <Pressable
+        disabled={loadingPlanId !== null}
         style={({ pressed }) => [
           styles.actionBtn,
           item.featured && styles.actionBtnFeatured,
           pressed && { transform: [{ scale: 0.97 }] },
         ]}
-        onPress={() => {
-          // handle purchase
-          console.log('Selected plan:', item.id);
-        }}
+        onPress={() => handlePayment(item)}
       >
-        <Text
-          style={[
-            styles.actionBtnText,
-            item.featured && styles.actionBtnTextFeatured,
-          ]}
-        >
-          {item.buttonText}
-        </Text>
+        {loadingPlanId === item.id ? (
+          <ActivityIndicator color={item.featured ? '#0b0b0b' : '#fff'} />
+        ) : (
+          <Text
+            style={[
+              styles.actionBtnText,
+              item.featured && styles.actionBtnTextFeatured,
+            ]}
+          >
+            {user?.subscription?.plan === item.index ? 'Current Plan' : item.buttonText}
+          </Text>
+        )}
       </Pressable>
     </Pressable>
   );
 
   return (
     <View style={styles.container}>
-
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Plans Carousel */}
         <FlatList
           data={PLANS}
           renderItem={renderPlan}
@@ -209,12 +253,9 @@ const Subscription = ({route, navigation} : Props) => {
           snapToAlignment="center"
         />
 
-        {/* Comparison Table */}
         <View style={styles.compSection}>
           <Text style={styles.compTitle}>Compare Benefits</Text>
-
           <View style={styles.compTable}>
-            {/* Header */}
             <View style={styles.compHeaderRow}>
               <Text style={[styles.compHeaderCell, { flex: 1.4, textAlign: 'left' }]}>
                 Features
@@ -224,7 +265,6 @@ const Subscription = ({route, navigation} : Props) => {
               <Text style={[styles.compHeaderCell, { color: '#fbbf24' }]}>Pro</Text>
             </View>
 
-            {/* Rows */}
             {COMPARISON.map((row, idx) => (
               <View
                 key={idx}
@@ -236,15 +276,9 @@ const Subscription = ({route, navigation} : Props) => {
                 <Text style={[styles.featureLabel, { flex: 1.4 }]}>
                   {row.feature}
                 </Text>
-                <View style={styles.compCell}>
-                  {renderCheck(row.basic)}
-                </View>
-                <View style={styles.compCell}>
-                  {renderCheck(row.standard, true)}
-                </View>
-                <View style={styles.compCell}>
-                  {renderCheck(row.pro)}
-                </View>
+                <View style={styles.compCell}>{renderCheck(row.basic)}</View>
+                <View style={styles.compCell}>{renderCheck(row.standard, true)}</View>
+                <View style={styles.compCell}>{renderCheck(row.pro)}</View>
               </View>
             ))}
           </View>
@@ -263,8 +297,6 @@ const styles = StyleSheet.create({
     paddingTop: 94,
     paddingBottom: 60,
   },
-
-  // Plans
   plansContainer: {
     paddingHorizontal: 24,
     paddingTop: 35,
@@ -378,8 +410,6 @@ const styles = StyleSheet.create({
   actionBtnTextFeatured: {
     color: '#0b0b0b',
   },
-
-  // Comparison
   compSection: {
     paddingHorizontal: 24,
     marginTop: 8,

@@ -10,8 +10,11 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-"bundleIdentifier": "com.anonymous.waves","infoPlist": {
-        "UIBackgroundModes": ["audio"],
+      "bundleIdentifier": "com.anonymous.waves",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ],
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": false
         }
@@ -26,17 +29,15 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
-"android.permission.INTERNET",
-  "android.permission.ACCESS_NETWORK_STATE",
-  "android.permission.READ_EXTERNAL_STORAGE",
-  "android.permission.WRITE_EXTERNAL_STORAGE",
-  "android.permission.DOWNLOAD_WITHOUT_NOTIFICATION",
-  "android.permission.FOREGROUND_SERVICE",
-  "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-  "android.permission.POST_NOTIFICATIONS",
-"android.permission.FOREGROUND_SERVICE",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.DOWNLOAD_WITHOUT_NOTIFICATION",
+        "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-  "android.permission.WAKE_LOCK"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.WAKE_LOCK"
       ],
       "package": "com.anonymous.waves"
     },
@@ -44,7 +45,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-"expo-notifications",
+      "expo-notifications",
       "expo-secure-store",
       "expo-web-browser",
       "@react-native-google-signin/google-signin",

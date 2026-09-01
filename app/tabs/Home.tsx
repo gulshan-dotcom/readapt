@@ -291,7 +291,7 @@ const HomeScreen = () => {
 
   useEffect(() => {
     const getSeries = async () => {
-      if (user && user?.joinedSeries) {
+      if (user && user?.joinedSeries && accessToken) {
         try {
           const data = await api.get(`/series/${user.joinedSeries}`, {
             headers: {
@@ -308,7 +308,7 @@ const HomeScreen = () => {
       }
     };
     getSeries();
-  }, [user, loadingUser]);
+  }, [user, loadingUser,accessToken]);
 
   useEffect(() => {
     if (!seriesData?.cover || !user?.email) return;

@@ -27,7 +27,8 @@ const TopNav = () => {
   };
 
   return (
-    <View style={[{ ...styles.navbar }, { top: insets.top }]}>
+    <View style={[{ ...styles.navbar }, { paddingTop: insets.top, 
+    height: 70 +insets.top, }]}>
       <View>
         <Text style={styles.brandName}>Naveen Kattar</Text>
         <Text style={styles.welcomeBack}>Welcome Back!</Text>
@@ -75,7 +76,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    height: 70,
     backgroundColor: "rgba(5,5,5,0.95)",
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255,255,255,0.1)",

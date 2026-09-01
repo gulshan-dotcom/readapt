@@ -1,5 +1,10 @@
 import { StatusBar } from "expo-status-bar";
-import { Platform, StatusBar as RNStatusBar, StyleSheet, View } from "react-native";
+import {
+  Platform,
+  StatusBar as RNStatusBar,
+  StyleSheet,
+  View,
+} from "react-native";
 import MainNavigation from "./components/nav/MainNavigation";
 import Toast from "./components/state/Toast";
 import Modal from "./components/state/Modal";
@@ -7,11 +12,12 @@ import { DataProvider } from "./components/state/DataContext";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useEffect } from "react";
 import * as NavigationBar from "expo-navigation-bar";
+import AudioControls from "./components/props/AudioControls";
 
 export default function App() {
   useEffect(() => {
     if (Platform.OS === "android") {
-      RNStatusBar.setTranslucent(false); 
+      RNStatusBar.setTranslucent(false);
       NavigationBar.setStyle("dark");
     }
   }, []);
@@ -20,11 +26,10 @@ export default function App() {
       <View style={styles.container}>
         <DataProvider>
           <MainNavigation />
+          <AudioControls />
           <Toast />
           <Modal />
-          <StatusBar style="light" 
-          backgroundColor="#090314" 
-          animated={true} />
+          <StatusBar style="light" backgroundColor="#090314" animated={true} />
         </DataProvider>
       </View>
     </SafeAreaProvider>
@@ -34,6 +39,6 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#050614" 
+    backgroundColor: "#050614",
   },
 });

@@ -20,6 +20,7 @@ export type IChapter = {
     cut: string;
     title: string;
   }[];
+  lyrics?: string; // in such a format "[00:01:00] - line 1\n[00:02:00] - line 2"
   createdAt: Date;
   updatedAt: Date;
 }

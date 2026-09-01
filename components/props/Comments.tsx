@@ -245,8 +245,6 @@ const CommentsDrawer = ({
   useEffect(() => {
     if (isQuestion && accessToken && visible) {
       getCommentsOfQue();
-    } else {
-      console.log(isQuestion, accessToken, isLoading, "false values are here");
     }
   }, [accessToken, visible]);
 

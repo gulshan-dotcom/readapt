@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, Alert, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Alert, ActivityIndicator, Image, ImageBackground, Linking } from "react-native";
 import * as SecureStore from "expo-secure-store";
 import {
   GoogleSignin,
@@ -20,11 +20,9 @@ type Props = {
 
 const BACKEND_LOGIN_URL = "/auth/login";
 
-// 1. Configure Google Sign-In outside or in useEffect
 GoogleSignin.configure({
-  // Get this from your Google Cloud Console / Firebase (OAuth 2.0 Client ID for Web)
-  webClientId: "743066184878-es8jqus96o8ip2qlrmd7md7n5o5j8ndv.apps.googleusercontent.com", 
-  offlineAccess: true, // Set to true if you need refresh tokens on your backend
+  webClientId: "743066184878-es8jqus96o8ip2qlrmd7md7n5o5j8ndv.apps.googleusercontent.com",
+  offlineAccess: true,
 });
 
 const Login = ({ route, navigation }: Props) => {
@@ -41,17 +39,12 @@ const Login = ({ route, navigation }: Props) => {
   const handleGoogleSignIn = async () => {
     try {
       setIsLoadingUi(true);
-
-      // Check if Play Services are available (Android)
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
 
-      // Perform native sign-in
       const response = await GoogleSignin.signIn();
-
-      // Retrieve tokens (idToken or accessToken depending on your backend contract)
-      console.log("token mil gaya: ", response.data?.idToken)
       const idToken = response.data?.idToken;
-      const tokens = await GoogleSignin.getTokens(); // Returns { accessToken, idToken }
+      if (response.type === "cancelled") return;
+      const tokens = await GoogleSignin.getTokens();
 
       if (idToken || tokens.accessToken) {
         await handleBackendLogin(tokens.accessToken || idToken);
@@ -60,10 +53,8 @@ const Login = ({ route, navigation }: Props) => {
       }
     } catch (error: any) {
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
-        // User cancelled the sign-in flow
         console.log("User cancelled Google Sign-In");
       } else if (error.code === statusCodes.IN_PROGRESS) {
-        // Operation (e.g. sign in) is in progress already
         console.log("Google Sign-In already in progress");
       } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
         Alert.alert("Error", "Google Play Services are not available or updated.");
@@ -98,56 +89,77 @@ const Login = ({ route, navigation }: Props) => {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.loginContainer}>
+    <ImageBackground
+      source={require("../../assets/background.png")}
+      style={styles.container}
+      resizeMode="cover"
+    >
+      <View style={styles.contentContainer}>
         <View style={styles.brandHeader}>
-          <Text style={styles.brandTitle}>Naveen Kewat</Text>
-          <Text style={styles.brandSubtitle}>Let's get you signed in</Text>
+          <Image
+            source={require("../../assets/textIcon.png")}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
         </View>
 
-        {isLoadingUi ? (
-          <View style={styles.loadingWrapper}>
-            <ActivityIndicator size="small" color={pallete.textwhite} />
-            <Text style={styles.processingText}>Processing login...</Text>
-          </View>
-        ) : (
-          <PopButton
-            styles={styles.googleButton}
-            onPress={handleGoogleSignIn}
-          >
-            <Svg width={20} height={20} viewBox="0 0 32 32">
-              <G>
-                <Path
-                  d="M23.75,16A7.7446,7.7446,0,0,1,8.7177,18.6259L4.2849,22.1721A13.244,13.244,0,0,0,29.25,16"
-                  fill="#00AC47"
-                />
-                <Path
-                  d="M23.75,16a7.7387,7.7387,0,0,1-3.2516,6.2987l4.3824,3.5059A13.2042,13.2042,0,0,0,29.25,16"
-                  fill="#4285F4"
-                />
-                <Path
-                  d="M8.25,16a7.698,7.698,0,0,1,.4677-2.6259L4.2849,9.8279a13.177,13.177,0,0,0,0,12.3442l4.4328-3.5462A7.698,7.698,0,0,1,8.25,16Z"
-                  fill="#FFBA00"
-                />
-                <Path
-                  d="M16,8.25a7.699,7.699,0,0,1,4.558,1.4958l4.06-3.7893A13.2152,13.2152,0,0,0,4.2849,9.8279l4.4328,3.5462A7.756,7.756,0,0,1,16,8.25Z"
-                  fill="#EA4335"
-                />
-                <Path
-                  d="M29.25,15v1L27,19.5H16.5V14H28.25A1,1,0,0,1,29.25,15Z"
-                  fill="#4285F4"
-                />
-              </G>
-            </Svg>
+        <View style={styles.actionContainer}>
+          {isLoadingUi ? (
+            <View style={styles.loadingWrapper}>
+              <ActivityIndicator size="small" color={pallete.textwhite} />
+            </View>
+          ) : (
+            <PopButton
+              styles={styles.googleButton}
+              onPress={handleGoogleSignIn}
+            >
+              <Svg width={20} height={20} viewBox="0 0 32 32">
+                <G>
+                  <Path
+                    d="M23.75,16A7.7446,7.7446,0,0,1,8.7177,18.6259L4.2849,22.1721A13.244,13.244,0,0,0,29.25,16"
+                    fill="#00AC47"
+                  />
+                  <Path
+                    d="M23.75,16a7.7387,7.7387,0,0,1-3.2516,6.2987l4.3824,3.5059A13.2042,13.2042,0,0,0,29.25,16"
+                    fill="#4285F4"
+                  />
+                  <Path
+                    d="M8.25,16a7.698,7.698,0,0,1,.4677-2.6259L4.2849,9.8279a13.177,13.177,0,0,0,0,12.3442l4.4328-3.5462A7.698,7.698,0,0,1,8.25,16Z"
+                    fill="#FFBA00"
+                  />
+                  <Path
+                    d="M16,8.25a7.699,7.699,0,0,1,4.558,1.4958l4.06-3.7893A13.2152,13.2152,0,0,0,4.2849,9.8279l4.4328,3.5462A7.756,7.756,0,0,1,16,8.25Z"
+                    fill="#EA4335"
+                  />
+                  <Path
+                    d="M29.25,15v1L27,19.5H16.5V14H28.25A1,1,0,0,1,29.25,15Z"
+                    fill="#4285F4"
+                  />
+                </G>
+              </Svg>
+              <Text style={styles.googleButtonText}>Continue with Google</Text>
+            </PopButton>
+          )}
 
-            <Text style={styles.googleButtonText}>Continue with Google</Text>
-          </PopButton>
-        )}
-        <Text style={styles.footerText}>
-          By continuing, you agree to our Terms & Privacy Policy
-        </Text>
+          <Text style={styles.footerText}>
+            By continuing, you agree to our{" "}
+            <Text
+              style={styles.linkText}
+              onPress={() => Linking.openURL("https://waves.com/terms")}
+            >
+              Terms
+            </Text>{" "}
+            &{" "}
+            <Text
+              style={styles.linkText}
+              onPress={() => Linking.openURL("https://waves.com/privacy")}
+            >
+              Privacy Policy
+            </Text>
+          </Text>
+        </View>
       </View>
-    </View>
+    </ImageBackground>
   );
 };
 
@@ -155,72 +167,63 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: pallete.bgmain,
-    justifyContent: "center",
+  },
+  contentContainer: {
+    flex: 1,
+    justifyContent: "space-between",
     paddingHorizontal: 24,
+    paddingTop: 160,
+    paddingBottom: 48,
   },
-
-  loginContainer: {
-    width: "100%",
-    alignSelf: "center",
-  },
-
   brandHeader: {
     alignItems: "center",
-    marginBottom: 42,
   },
-
-  brandTitle: {
-    fontSize: 54,
-    fontWeight: "900",
-    color: pallete.textwhite,
-    letterSpacing: 1,
-    textTransform: "uppercase",
+  logoImage: {
+    width: 620,
+    height: 300,
   },
-
   brandSubtitle: {
-    marginTop: 10,
+    marginTop: 12,
     color: pallete.textgray,
     fontSize: 15,
     fontWeight: "500",
   },
-
+  actionContainer: {
+    width: "100%",
+  },
   googleButton: {
     height: 58,
     borderRadius: 16,
-    backgroundColor: "#090314",
-
+    backgroundColor: "#fff",
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-
     borderWidth: 1,
     borderColor: "#64646b",
-
     shadowColor: "#000",
     shadowOpacity: 0.15,
     shadowRadius: 18,
-    shadowOffset: {
-      width: 0,
-      height: 8,
-    },
-
+    shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },
-
   googleButtonText: {
     marginLeft: 14,
     fontSize: 16,
     fontWeight: "700",
-    color: "#64646b",
+    color: "#303030",
   },
-
+  linkText: {
+    color: pallete.textwhite, // or your preferred accent color
+    textDecorationLine: "underline",
+    fontWeight: "600",
+  },
   loadingWrapper: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
+    height: 58,
     gap: 10,
   },
-
   processingText: {
     textAlign: "center",
     color: pallete.textgray,

@@ -5,10 +5,17 @@ import {
   ReactNode,
   useEffect,
   useCallback,
+  useMemo,
 } from "react";
 import { IUser } from "../../types/User";
 import useAuth from "../../hooks/useAuth";
 import { api } from "../../lib/api";
+import {
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  setAudioModeAsync,
+} from "expo-audio";
+import ReactNativeBlobUtil from "react-native-blob-util";
 
 type ToastData = {
   title: string;
@@ -33,6 +40,18 @@ type ModalContextType = {
   hideModal: () => void;
 };
 
+type AudioContextType = {
+  player: any;
+  status: any;
+  currentTrack: any;
+  playTrack: (track: any) => void;
+  togglePlay: () => void;
+  pause: () => void;
+  seekTo: (seconds: number) => void;
+};
+
+
+export const AudioContext = createContext<AudioContextType | null>(null);
 export const ToastContext = createContext<ToastContextType | null>(null);
 export const ModalContext = createContext<ModalContextType | null>(null);
 export const UserContext = createContext<{
@@ -87,13 +106,14 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
+      console.log("fetching user")
       const data = await api.get(`/get-self`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-      const userData : IUser = data.data.data
-      console.log(userData, user)
+      const userData: IUser = data.data.data
+      console.log("fetched user")
       setUser(userData);
     } catch (error) {
       console.error("Error fetching series data:", error);
@@ -107,28 +127,145 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     getUser();
   }, [getUser]);
 
+  const [currentTrack, setCurrentTrack] = useState<any>(null);
+
+  const player = useAudioPlayer(
+    currentTrack?.media ?? null,
+    {
+      updateInterval: 1000,
+    }
+  );
+
+  const status = useAudioPlayerStatus(player);
+
+  useEffect(() => {
+    const setupAudio = async () => {
+      try {
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: true,
+          interruptionMode: "doNotMix",
+        });
+      } catch (error) {
+        console.log("Audio mode error:", error);
+      }
+    };
+
+    setupAudio();
+  }, []);
+
+  const DEMO_AUDIO_URL =
+    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+
+const playTrack = async (track: any) => {
+  if (!track) return;
+
+  const targetUrl = track.media || DEMO_AUDIO_URL;
+  
+  player.replace({ uri: targetUrl });
+
+  setCurrentTrack(track);
+};
+
+  /*
+   * Enable Android notification / lock-screen controls
+   */
+  useEffect(() => {
+    if (!currentTrack || !status?.isLoaded) return;
+
+    try {
+      player.setActiveForLockScreen(true, {
+        title: currentTrack.title ?? "Audio",
+        artist: currentTrack.author ?? "Unknown Artist",
+        albumTitle: "Redapt",
+        artworkUrl: currentTrack.cover,
+      }, {
+        showSeekBackward: true,
+        showSeekForward: true,
+      });
+    } catch (error) {
+      console.log("Lock screen setup error:", error);
+    }
+
+    return () => {
+      try {
+        player.clearLockScreenControls();
+      } catch { }
+    };
+  }, [
+    currentTrack,
+    status?.isLoaded,
+    player,
+  ]);
+
+  /*
+   * Automatically start a newly selected track
+   */
+  // useEffect(() => {
+  //   if (!currentTrack || !status?.isLoaded) return;
+
+  //   player.play();
+  // }, [currentTrack, status?.isLoaded]);
+
+  const togglePlay = () => {
+    if (!status?.isLoaded) return;
+
+    if (status.playing) {
+      player.pause();
+    } else {
+      player.play();
+    }
+  };
+
+  const pause = () => {
+    player.pause();
+  };
+
+  const seekTo = (seconds: number) => {
+    player.seekTo(seconds);
+  };
+
+  const value = useMemo(
+    () => ({
+      player,
+      status,
+      currentTrack,
+      playTrack,
+      togglePlay,
+      pause,
+      seekTo,
+    }),
+    [
+      player,
+      status,
+      currentTrack,
+    ]
+  );
+
   return (
-    <ToastContext.Provider
-      value={{
-        toast,
-        showToast,
-        hideToast,
-      }}>
-      <ModalContext.Provider
+    <AudioContext.Provider value={value}>
+      <ToastContext.Provider
         value={{
-          modal,
-          showModal,
-          hideModal,
+          toast,
+          showToast,
+          hideToast,
         }}>
-        <UserContext.Provider
+        <ModalContext.Provider
           value={{
-            user,
-            loadingUser,
-            reload: getUser,
+            modal,
+            showModal,
+            hideModal,
           }}>
-          {children}
-        </UserContext.Provider>
-      </ModalContext.Provider>
-    </ToastContext.Provider>
+          <UserContext.Provider
+            value={{
+              user,
+              loadingUser,
+              reload: getUser,
+            }}>
+            {children}
+          </UserContext.Provider>
+        </ModalContext.Provider>
+      </ToastContext.Provider>
+    </AudioContext.Provider>
   );
 };
