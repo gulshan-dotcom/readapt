@@ -7,12 +7,14 @@ import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "./MainNavigation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { useUser } from "../../hooks/useUser";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 const TopNav = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NavigationProp>();
+  const {user}= useUser()
   const scaleAnim = React.useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
@@ -30,7 +32,7 @@ const TopNav = () => {
     <View style={[{ ...styles.navbar }, { paddingTop: insets.top, 
     height: 70 +insets.top, }]}>
       <View>
-        <Text style={styles.brandName}>Naveen Kattar</Text>
+        <Text style={styles.brandName}>{user?.name || "Readapt User"}</Text>
         <Text style={styles.welcomeBack}>Welcome Back!</Text>
       </View>
 

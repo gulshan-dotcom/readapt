@@ -3,7 +3,7 @@ import { RootStackParamList } from "../../components/nav/MainNavigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Subscription'>;
 import useAuth from "../../hooks/useAuth";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,8 @@ import {
   FlatList,
   Alert,
   ActivityIndicator,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import Svg, { Polyline, Line } from 'react-native-svg';
 import * as WebBrowser from 'expo-web-browser';
@@ -21,11 +23,14 @@ import pallete from '../../lib/Colors';
 import { useUser } from '../../hooks/useUser';
 import { useToast } from '../../hooks/useToast';
 import { api } from '../../lib/api';
+import Offline from '../../components/state/Offline';
+import { useNetworkStatus } from '../../hooks/useNetwork';
 
 const CARD_WIDTH = 290;
 const CARD_GAP = 16;
-const NEXT_API_URL = 'https://redapt-admin-git-main-gulshan-dotcoms-projects.vercel.app/api/userapi/user';
+const NEXT_API_URL = 'https://redapt-admin-sand.vercel.app/api/user';
 
+// Plan indices: 0 = free, 1 = Basic, 2 = Standard, 4 = Pro (as per your mapping)
 const PLANS = [
   {
     id: 'basic',
@@ -79,11 +84,58 @@ const COMPARISON = [
   { feature: 'Duration', basic: '30 Days', standard: '30 Days', pro: '40 Days' },
 ];
 
+const getDaysRemaining = (expireOn?: string | null): number | null => {
+  if (!expireOn) return null;
+  const expiry = new Date(expireOn).getTime();
+  const now = Date.now();
+  const diff = expiry - now;
+  if (isNaN(expiry) || diff <= 0) return 0;
+  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+};
+
+const formatExpiry = (expireOn?: string | null): string => {
+  if (!expireOn) return '—';
+  try {
+    const d = new Date(expireOn);
+    return d.toLocaleDateString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return '—';
+  }
+};
+
 const Subscription = ({ route, navigation }: Props) => {
   const [loadingPlanId, setLoadingPlanId] = useState<string | null>(null);
-  const [accessToken] = useAuth();
-  const { user, reload } = useUser()
-  const { showToast } = useToast()
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const { accessToken } = useAuth();
+  const { user, reload } = useUser();
+  const { showToast } = useToast();
+  const { isConnected } = useNetworkStatus();
+
+  const currentPlanIndex = user?.subscription?.plan ?? 0;
+  const isSubscribed = currentPlanIndex > 0;
+  const isPro = currentPlanIndex >= 4;
+
+  
+  const currentPlan = useMemo(
+    () => PLANS.find((p) => p.index === currentPlanIndex) || null,
+    [currentPlanIndex]
+  );
+  
+  console.log(isSubscribed, currentPlan, "subs details")
+
+  const daysRemaining = useMemo(
+    () => getDaysRemaining(user?.subscription?.expiresOn + ""),
+    [user?.subscription?.expiresOn]
+  );
+
+  const upgradeOptions = useMemo(
+    () => PLANS.filter((p) => p.index > currentPlanIndex),
+    [currentPlanIndex]
+  );
 
   useEffect(() => {
     const subscription = Linking.addEventListener('url', handleDeepLink);
@@ -100,25 +152,41 @@ const Subscription = ({ route, navigation }: Props) => {
 
       if (razorpayStatus === 'paid' || razorpayPaymentId) {
         Alert.alert('Payment Successful', 'Your subscription is now active!');
+        reload();
       } else {
         Alert.alert('Payment Status', 'Payment completed or pending status check.');
       }
     }
   };
 
-  const handlePayment = async (plan: typeof PLANS[0]) => {
+  const handlePayment = async (plan: (typeof PLANS)[0]) => {
+     if (!isConnected) {
+      showToast({
+        title: "Please connect to the Internet.",
+      });
+      return;
+    }
     try {
-      if (!user) {
+      if (!user || !accessToken) {
         showToast({ title: 'Please try again later.', time: 3000 });
         return;
       }
 
-      setLoadingPlanId(plan.id);
+      // Prevent downgrade
+      if (plan.index <= currentPlanIndex) {
+        showToast({ title: 'You can only upgrade to a higher plan.', time: 3000 });
+        return;
+      }
 
-      // 1. Get Razorpay payment link from Next.js backend
-      const response = await fetch(`${NEXT_API_URL}/order`, {
+      setLoadingPlanId(plan.id);
+      setShowUpgradeModal(false);
+
+      const response = await fetch(`${NEXT_API_URL}/payment/order`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}`, },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({
           amount: plan.numericPrice,
           planId: plan.index,
@@ -134,14 +202,17 @@ const Subscription = ({ route, navigation }: Props) => {
         Linking.createURL('payment-callback')
       );
 
-      if (result.type === 'cancel' || result.type === 'dismiss') {
-        const res = api.post("/payment/fail")
-        showToast({ title: 'Payment Cancelled', });
+      if (result.type === 'cancel') {
+        console.log('Payment result:', result);
+        api.post('/payment/fail', {}, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        showToast({ title: 'Payment Cancelled' });
       }
     } catch (error: any) {
       showToast({ title: error.message || 'Something went wrong' });
     } finally {
-      reload()
+      reload();
       setLoadingPlanId(null);
     }
   };
@@ -167,7 +238,7 @@ const Subscription = ({ route, navigation }: Props) => {
     );
   };
 
-  const renderPlan = ({ item }: { item: (typeof PLANS)[0] }) =>  (
+  const renderPlan = ({ item }: { item: (typeof PLANS)[0] }) => (
     <Pressable
       style={({ pressed }) => [
         styles.planCard,
@@ -228,12 +299,196 @@ const Subscription = ({ route, navigation }: Props) => {
               item.featured && styles.actionBtnTextFeatured,
             ]}
           >
-            {user?.subscription?.plan === item.index ? 'Current Plan' : item.buttonText}
+            {item.buttonText}
           </Text>
         )}
       </Pressable>
     </Pressable>
   );
+
+  // ---------- Current Plan Card (when subscribed) ----------
+  const renderCurrentPlanCard = () => {
+    if (!currentPlan) return null;
+
+    const isFeaturedLook = currentPlan.index >= 2;
+
+    return (
+      <View style={styles.currentPlanWrapper}>
+        <View
+          style={[
+            styles.currentPlanCard,
+            isFeaturedLook && styles.planCardFeatured,
+          ]}
+        >
+          <View style={styles.currentBadge}>
+            <Text style={styles.currentBadgeText}>Current Plan</Text>
+          </View>
+
+          <Text style={styles.planName}>{currentPlan.name}</Text>
+
+          <View style={styles.planPriceRow}>
+            <Text style={styles.planPrice}>{currentPlan.price}</Text>
+            <Text style={styles.planPriceUnit}>/mo</Text>
+          </View>
+
+          {/* Validity + Days Remaining */}
+          <View style={styles.validityRow}>
+            <View style={styles.validityItem}>
+              <Text style={styles.validityLabel}>Valid Till</Text>
+              <Text style={styles.validityValue}>
+                {formatExpiry(user?.subscription?.expiresOn + "")}
+              </Text>
+            </View>
+            <View style={styles.validityDivider} />
+            <View style={styles.validityItem}>
+              <Text style={styles.validityLabel}>Days Left</Text>
+              <Text
+                style={[
+                  styles.validityValue,
+                  daysRemaining !== null && daysRemaining <= 7 && { color: '#fbbf24' },
+                  daysRemaining === 0 && { color: '#fb7185' },
+                ]}
+              >
+                {daysRemaining === null
+                  ? '—'
+                  : daysRemaining === 0
+                  ? 'Expired'
+                  : `${daysRemaining} day${daysRemaining === 1 ? '' : 's'}`}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.featuresList}>
+            {currentPlan.features.map((feat, idx) => (
+              <View key={idx} style={styles.featureItem}>
+                <Svg
+                  width={16}
+                  height={16}
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={isFeaturedLook ? '#4ade80' : pallete.accent}
+                  strokeWidth="3"
+                >
+                  <Polyline points="20 6 9 17 4 12" />
+                </Svg>
+                <Text style={styles.featureText}>{feat}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Upgrade button – hidden for Pro */}
+          {!isPro && (
+            <Pressable
+              style={({ pressed }) => [
+                styles.actionBtn,
+                styles.actionBtnFeatured,
+                pressed && { transform: [{ scale: 0.97 }] },
+              ]}
+              onPress={() => setShowUpgradeModal(true)}
+            >
+              <Text style={[styles.actionBtnText, styles.actionBtnTextFeatured]}>
+                Upgrade Plan
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  // ---------- Upgrade Modal ----------
+  const renderUpgradeModal = () => (
+    <Modal
+      visible={showUpgradeModal}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setShowUpgradeModal(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Upgrade Your Plan</Text>
+            <Pressable onPress={() => setShowUpgradeModal(false)} hitSlop={12}>
+              <Text style={styles.modalClose}>✕</Text>
+            </Pressable>
+          </View>
+
+          <Text style={styles.modalSubtitle}>
+            Choose a higher plan. You can only upgrade — downgrades are not allowed.
+          </Text>
+
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {upgradeOptions.map((plan) => (
+              <View
+                key={plan.id}
+                style={[
+                  styles.upgradeOptionCard,
+                  plan.featured && styles.planCardFeatured,
+                ]}
+              >
+                <View style={styles.upgradeOptionHeader}>
+                  <Text style={styles.planName}>{plan.name}</Text>
+                  <View style={styles.planPriceRow}>
+                    <Text style={styles.planPrice}>{plan.price}</Text>
+                    <Text style={styles.planPriceUnit}>/mo</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.planDuration}>{plan.duration}</Text>
+
+                <View style={styles.featuresList}>
+                  {plan.features.map((feat, idx) => (
+                    <View key={idx} style={styles.featureItem}>
+                      <Svg
+                        width={16}
+                        height={16}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={plan.featured ? '#4ade80' : pallete.accent}
+                        strokeWidth="3"
+                      >
+                        <Polyline points="20 6 9 17 4 12" />
+                      </Svg>
+                      <Text style={styles.featureText}>{feat}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <Pressable
+                  disabled={loadingPlanId !== null}
+                  style={({ pressed }) => [
+                    styles.actionBtn,
+                    plan.featured && styles.actionBtnFeatured,
+                    pressed && { transform: [{ scale: 0.97 }] },
+                  ]}
+                  onPress={() => handlePayment(plan)}
+                >
+                  {loadingPlanId === plan.id ? (
+                    <ActivityIndicator color={plan.featured ? '#0b0b0b' : '#fff'} />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.actionBtnText,
+                        plan.featured && styles.actionBtnTextFeatured,
+                      ]}
+                    >
+                      Upgrade to {plan.name}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
+    if (!user && !isConnected) {
+    return <View style={[styles.container,{ paddingTop: 100, alignItems: "center", justifyContent: "center"}]}>
+      <Offline />
+    </View>;
+  }
 
   return (
     <View style={styles.container}>
@@ -241,18 +496,23 @@ const Subscription = ({ route, navigation }: Props) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        <FlatList
-          data={PLANS}
-          renderItem={renderPlan}
-          keyExtractor={(item) => item.id}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.plansContainer}
-          snapToInterval={CARD_WIDTH + CARD_GAP}
-          decelerationRate="fast"
-          snapToAlignment="center"
-        />
+        {isSubscribed && currentPlan ? (
+          renderCurrentPlanCard()
+        ) : (
+          <FlatList
+            data={PLANS}
+            renderItem={renderPlan}
+            keyExtractor={(item) => item.id}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.plansContainer}
+            snapToInterval={CARD_WIDTH + CARD_GAP}
+            decelerationRate="fast"
+            snapToAlignment="center"
+          />
+        )}
 
+        {/* Comparison table – still useful for free users or reference */}
         <View style={styles.compSection}>
           <Text style={styles.compTitle}>Compare Benefits</Text>
           <View style={styles.compTable}>
@@ -284,6 +544,8 @@ const Subscription = ({ route, navigation }: Props) => {
           </View>
         </View>
       </ScrollView>
+
+      {renderUpgradeModal()}
     </View>
   );
 };
@@ -303,6 +565,8 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
     gap: CARD_GAP,
   },
+
+  // ---- Plan cards (shared) ----
   planCard: {
     width: CARD_WIDTH,
     backgroundColor: pallete.bgcard || 'rgba(20,20,20,0.6)',
@@ -410,6 +674,70 @@ const styles = StyleSheet.create({
   actionBtnTextFeatured: {
     color: '#0b0b0b',
   },
+
+  // ---- Current Plan specific ----
+  currentPlanWrapper: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 12,
+  },
+  currentPlanCard: {
+    backgroundColor: pallete.bgcard || 'rgba(20,20,20,0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 20,
+    padding: 24,
+  },
+  currentBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(0,163,108,0.15)',
+    borderWidth: 1,
+    borderColor: '#00A36C',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginBottom: 16,
+  },
+  currentBadgeText: {
+    color: '#00A36C',
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  validityRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 22,
+    marginTop: 8,
+  },
+  validityItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  validityDivider: {
+    width: 1,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: 8,
+  },
+  validityLabel: {
+    fontSize: 11,
+    color: pallete.textgray,
+    fontWeight: '500',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  validityValue: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+
+  // ---- Comparison table ----
   compSection: {
     paddingHorizontal: 24,
     marginTop: 8,
@@ -464,6 +792,60 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#e5e7eb',
     textAlign: 'center',
+  },
+
+  // ---- Upgrade Modal ----
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: pallete.bgmain || '#090314',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 40,
+    maxHeight: Dimensions.get('window').height * 0.85,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  modalClose: {
+    fontSize: 22,
+    color: pallete.textgray,
+    padding: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: pallete.textgray,
+    marginBottom: 20,
+    lineHeight: 18,
+  },
+  upgradeOptionCard: {
+    backgroundColor: pallete.bgcard || 'rgba(20,20,20,0.6)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+  },
+  upgradeOptionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
   },
 });
 

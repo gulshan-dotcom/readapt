@@ -13,6 +13,8 @@ import { api } from "../../lib/api";
 import NextChapterCardSkelly from "./NextChapterSkelly";
 import { assetPallete } from "../../lib/Colors";
 import { ISeriesContent } from "../../types/Series";
+import { useNetworkStatus } from "../../hooks/useNetwork";
+import { SubscriptionPlan } from "../../enums";
 
 const colors = {
   bgMain: "#090314",
@@ -25,29 +27,79 @@ const colors = {
   surfaceVariant: "rgba(255, 255, 255, 0.08)",
 };
 
+type BookPopulated = {
+  _id: string;
+  title: string;
+  details?: string;
+  media: string; // URL
+  type: "pdf" | "audio";
+  for: SubscriptionPlan;
+  isTrending: boolean;
+  comments: {
+    _id: string;
+    by: {
+      _id: string;
+      name?: string;
+      username?: string;
+      avatar?: string;
+    };
+    text: string;
+    createdAt: string;
+  }[];
+  cover: string;
+  category: {
+    _id: string;
+    name: string;
+    image: string;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  series?: string;
+  likes: number;
+  author: string;
+  total: number;
+  isDownloadable: boolean;
+  toc: {
+    cut: string;
+    title: string;
+  }[];
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
-const NextChapter = ({ book, onOpen }: { book: IChapter, onOpen : (book : IChapter) => void }) => {
+const NextChapter = ({
+  book,
+  onOpen,
+  viewer,
+}: {
+  book: BookPopulated;
+  onOpen: (book: BookPopulated) => void;
+  viewer: "pdf" | "audio";
+}) => {
   const navigation = useNavigation<NavigationProp>();
   const { user } = useUser();
   const { showToast } = useToast();
-  const [accessToken] = useAuth();
+  const { accessToken } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
-  const [nextChapters, setNextChapters] = useState<IChapter[] | null>(null);
+  const { isConnected } = useNetworkStatus()
+  const [nextChapters, setNextChapters] = useState<BookPopulated[] | null>(null);
 
-  const renderContentCard = ({ item }: { item: IChapter }) => {
+  const renderContentCard = ({ item }: { item: BookPopulated }) => {
     return (
       <PopButton
         styles={styles.queueItem}
         scale={0.95}
         onPress={() => {
           if ((user?.subscription?.plan ?? 0) >= item.for) {
-            if (item.type === "pdf") {
-              navigation.navigate("ReadBook", {
+            if (item.type === viewer) {
+              onOpen(item);
+            } else {
+              const route = item.type === "audio" ? "AudioRdr" : "ReadBook";
+              navigation.navigate(route, {
                 bookId: item._id,
               });
-            } else {
-              onOpen(item)
             }
           } else {
             showToast({
@@ -68,11 +120,11 @@ const NextChapter = ({ book, onOpen }: { book: IChapter, onOpen : (book : IChapt
                 styles.queueCardBadge,
                 {
                   backgroundColor:
-                    book.type === "pdf" ? assetPallete[0] : assetPallete[1],
+                    item.type === "pdf" ? assetPallete[0] : assetPallete[1],
                 },
               ]}>
               <Text style={styles.badgeText}>
-                {book.type === "pdf" ? "BOOK" : "AUDIO"}
+                {item.type === "pdf" ? "BOOK" : "AUDIO"}
               </Text>
             </View>
           </View>
@@ -104,9 +156,7 @@ const NextChapter = ({ book, onOpen }: { book: IChapter, onOpen : (book : IChapt
 
   useEffect(() => {
     if (!user || !accessToken) return;
-    console.log("fetching series? ", book.series)
     const fetchChapter = async () => {
-      console.log("fetching chapters for category: ", book.category)
       try {
         const chapters = await api.get(
           `/chapter/by-category/${book.category._id}`,
@@ -114,7 +164,7 @@ const NextChapter = ({ book, onOpen }: { book: IChapter, onOpen : (book : IChapt
             headers: { Authorization: `Bearer ${accessToken}` },
           },
         );
-        setNextChapters(chapters.data.data.chapters);
+        setNextChapters(chapters.data.data.chapters.filter((item: IChapter) => item._id !== book._id));
       } catch (error) {
         console.error("Error fetching chapters data in NextChpaters:", error);
         showToast({ title: "Error" });
@@ -123,18 +173,20 @@ const NextChapter = ({ book, onOpen }: { book: IChapter, onOpen : (book : IChapt
       }
     };
     const getSeries = async () => {
+      if(!book.series) return
       try {
-        const data = await api.get(`/series/${user.joinedSeries}`, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-        });
-        const chapters : ISeriesContent[] = data.data.data.chapters
-        const next = chapters.filter(item => item.contentModel === "Chapter").map(item => item.content) || null
+        const chapters: ISeriesContent[] = book.series?.chapters;
+        const next =
+          chapters
+            .filter((item) => item.contentModel === "Chapter" && item.content._id !== book._id)
+            .map((item) => item.content) || null;
         setNextChapters(next);
       } catch (error) {
         console.error("Error fetching series data in NextChpaters:", error);
         showToast({ title: "Error" });
+      }
+      finally {
+        setIsLoading(false);
       }
     };
 
@@ -143,7 +195,7 @@ const NextChapter = ({ book, onOpen }: { book: IChapter, onOpen : (book : IChapt
     } else {
       fetchChapter();
     }
-  }, [accessToken, book, accessToken]);
+  }, [accessToken, book, isConnected]);
 
   return (
     <View>
@@ -199,6 +251,10 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     position: "relative",
+    borderColor: "transparent",
+    borderWidth: 2,
+    borderRadius: 8,
+    overflow: "hidden"
   },
   queueThumb: {
     width: "100%",

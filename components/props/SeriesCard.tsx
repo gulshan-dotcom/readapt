@@ -60,7 +60,7 @@ const SeriesCard = ({ id, title, author, cover, chapterCount }: Props) => {
 
         {/* Main Card */}
         <View style={styles.seriesMain}>
-          <Image source={{ uri: "https://media.istockphoto.com/id/910535064/photo/education-concept-close-up-view-of-old-burning-candle-with-shabby-old-book-on-table-background.jpg?s=612x612&w=0&k=20&c=PqgSXdubvVAgGHC_NsRwGKVswJhK61uHN5msh5IzaJs=" }} style={styles.seriesImage} />
+          <Image source={{ uri: cover }} style={styles.seriesImage} />
 
           {/* Badge */}
           <View style={styles.seriesBadge}>

@@ -17,6 +17,7 @@ import { useToast } from "../../hooks/useToast";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { updateStreak } from "../../hooks/useStreak";
 import { useUser } from "../../hooks/useUser";
+import { useNetworkStatus } from "../../hooks/useNetwork";
 
 const { width } = Dimensions.get("window");
 
@@ -29,7 +30,7 @@ type Props = {
 const OPTION_LABELS = ["A", "B", "C", "D", "E", "F"];
 
 const QuestionCard = ({ question, onAttempted, onCommentClick}: Props) => {
-  const [accessToken] = useAuth();
+  const { accessToken } = useAuth();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
@@ -37,6 +38,7 @@ const QuestionCard = ({ question, onAttempted, onCommentClick}: Props) => {
   const [prevAnswer, setPrevAnswer] = useState<number | null>(null);
   const { showToast } = useToast();
   const { user } = useUser();
+  const {isConnected} = useNetworkStatus()
 
   // Animations
   const fillAnims = useRef(
@@ -64,6 +66,13 @@ const QuestionCard = ({ question, onAttempted, onCommentClick}: Props) => {
   };
 
   const handleSelect = async (index: number, isForce: boolean = false) => {
+    console.log("handleSelect called with index:", index, "isForce:", isForce);
+     if (!isConnected && !isForce) {
+      showToast({
+        title: "Please connect to the Internet.",
+      });
+      return;
+    }
     if (prevAnswer !== null) return;
     if (selectedIndex !== null || submitting) return;
 
@@ -144,13 +153,18 @@ const QuestionCard = ({ question, onAttempted, onCommentClick}: Props) => {
   };
 
   useEffect(() => {
-    if (user?.questionsAttempted) {
+    if (!user?.questionsAttempted) return;
+    if (user?.questionsAttempted.length === 0) return;
       const prevAnswer = user.questionsAttempted.find(
         (questionAt) => questionAt.question === question._id,
       )?.answered;
+      console.log(user.questionsAttempted, "ques attempted bu user")
       setSelectedIndex(prevAnswer ?? null);
+      if(prevAnswer) {
+
+      }
       handleSelect(prevAnswer ?? -1, true);
-    }
+    
   }, [user?.questionsAttempted]);
 
   const getTrackStyle = (index: number) => {

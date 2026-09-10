@@ -12,6 +12,7 @@ import { ParamListBase, RouteProp } from "@react-navigation/native";
 import pallete from "../../lib/Colors";
 import { api } from "../../lib/api";
 import PopButton from "../../components/props/PopButton";
+import { useNetworkStatus } from "../../hooks/useNetwork";
 
 type Props = {
   route: RouteProp<ParamListBase, "Login">;
@@ -26,13 +27,15 @@ GoogleSignin.configure({
 });
 
 const Login = ({ route, navigation }: Props) => {
-  const [accessToken, isLoggedIn, isLoading] = useAuth();
+  const {isLoggedIn, isLoading, checkLogin} = useAuth();
   const { showToast } = useToast();
   const [isLoadingUi, setIsLoadingUi] = useState(false);
+  const {isConnected} = useNetworkStatus()
 
   useEffect(() => {
     if (isLoggedIn) {
       navigation.replace("Tabs");
+      checkLogin()
     }
   }, [isLoading, isLoggedIn]);
 
@@ -67,6 +70,12 @@ const Login = ({ route, navigation }: Props) => {
   };
 
   const handleBackendLogin = async (googleAccessToken: string): Promise<void> => {
+     if (!isConnected) {
+      showToast({
+        title: "Please connect to the Internet.",
+      });
+      return;
+    }
     try {
       const { data } = await api.post(BACKEND_LOGIN_URL, {
         provider: "google",
@@ -145,14 +154,14 @@ const Login = ({ route, navigation }: Props) => {
             By continuing, you agree to our{" "}
             <Text
               style={styles.linkText}
-              onPress={() => Linking.openURL("https://waves.com/terms")}
+              onPress={() => Linking.openURL("https://drive.google.com/file/d/1N4WK0jX7ZDYXMTSgWLc51LQOrQoZ-8hR/view")}
             >
               Terms
             </Text>{" "}
             &{" "}
             <Text
               style={styles.linkText}
-              onPress={() => Linking.openURL("https://waves.com/privacy")}
+              onPress={() => Linking.openURL("https://drive.google.com/file/d/1bcqXVKT4yyC3PCPlttcxuARzA1IHob2Z/view")}
             >
               Privacy Policy
             </Text>

@@ -6,12 +6,14 @@ import {
   StyleSheet,
   Pressable,
   Animated,
+  Dimensions,
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { useNavigation } from "@react-navigation/native";
 import { RootStackParamList } from "../nav/MainNavigation";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import pallete, { assetPallete } from "../../lib/Colors"; // ← Import palette
+const width = Dimensions.get("window").width;
 
 type Props = {
   id: string;
@@ -21,6 +23,8 @@ type Props = {
   total: string;
   type: string;
   author: string;
+  icon?: React.ReactNode;
+  learWidth?: number;
 };
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -33,6 +37,8 @@ const Contentprogress = ({
   total,
   type,
   author,
+  learWidth,
+  icon,
 }: Props) => {
   const navigation = useNavigation<NavigationProp>();
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -67,7 +73,7 @@ const Contentprogress = ({
       onPress={handlePress}
       style={styles.listItem}>
       <Animated.View
-        style={[styles.container, { transform: [{ scale: scaleAnim }] }]}>
+        style={[styles.container, { width: learWidth ? learWidth : width / 100 * 80 ,  transform: [{ scale: scaleAnim }] }]}>
         <View style={styles.itemContent}>
           {/* Thumbnail */}
           <View style={styles.thumbWrapper}>
@@ -120,6 +126,7 @@ const Contentprogress = ({
         </View>
 
         {/* Chevron */}
+        
         <Svg
           width={20}
           height={20}

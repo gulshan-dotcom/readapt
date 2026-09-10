@@ -21,6 +21,8 @@ import Contentprogress from "../../components/props/ContentProgress";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../components/nav/MainNavigation";
+import { useNetworkStatus } from "../../hooks/useNetwork";
+import Offline from "../../components/state/Offline";
 
 const AvailableIcon = () => (
   <Svg width={18} height={18} viewBox="0 0 24 24">
@@ -238,7 +240,7 @@ function SkellyCrousel() {
 }
 
 const HomeScreen = () => {
-  const [accessToken, isAuthLoading] = useAuth();
+  const {accessToken, isLoading: isAuthLoading} = useAuth();
   const [feedData, setFeedData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [seriesData, setSeriesData] = useState<ISeries | null>(null);
@@ -258,10 +260,24 @@ const HomeScreen = () => {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingChapters, setLoadingChapters] = useState(false);
+  const { isConnected } = useNetworkStatus();
+
+  useEffect(() => {
+    setFeedData(null);
+    setSeriesData(null);
+    setContinueReading(null);
+    setCompleteChapters(0);
+    setChapters([]);
+    setPage(1);
+    setHasMore(true);
+    setLoading(true);
+    setIsContinueLoading(true);
+  }, [isConnected]);
 
   useEffect(() => {
     const fetchFeed = async () => {
       if (!accessToken) return;
+        console.log("data fetched 1 ")
 
       try {
         const { data } = await api.get("/feed", {
@@ -271,6 +287,7 @@ const HomeScreen = () => {
         });
 
         if (!data.data) throw new Error("fetch failed");
+        console.log("data fetched")
 
         if (data.success) {
           setFeedData(data.data);
@@ -287,7 +304,7 @@ const HomeScreen = () => {
     };
 
     fetchFeed();
-  }, [accessToken]);
+  }, [accessToken, isConnected]);
 
   useEffect(() => {
     const getSeries = async () => {
@@ -308,10 +325,9 @@ const HomeScreen = () => {
       }
     };
     getSeries();
-  }, [user, loadingUser,accessToken]);
+  }, [user, loadingUser, accessToken, isConnected]);
 
   useEffect(() => {
-    if (!seriesData?.cover || !user?.email) return;
     const getJoinedSeriesData = async () => {
       const readChapters = await AsyncStorage.getItem("recentReads");
       if (!readChapters) {
@@ -322,18 +338,20 @@ const HomeScreen = () => {
       const json: IChapter[] = recentReads.map(
         (recentRead) => recentRead.content,
       );
-      const ChapterIdsInSeries = seriesData?.chapters?.map(
-        (item) => item.content._id,
-      );
-      const readChaptersInSeries = json.filter((readChapter) =>
-        ChapterIdsInSeries.includes(readChapter._id),
-      );
-      setCompleteChapters(readChaptersInSeries.length);
       setContinueReading(recentReads.slice(0, 3));
+      if (!seriesData?.cover || !user?.email) {
+        const ChapterIdsInSeries = seriesData?.chapters?.map(
+          (item) => item.content._id,
+        );
+        const readChaptersInSeries = json.filter((readChapter) =>
+          ChapterIdsInSeries?.includes(readChapter._id),
+        );
+        setCompleteChapters(readChaptersInSeries.length);
+      }
       setIsContinueLoading(false);
     };
     getJoinedSeriesData();
-  }, [seriesData?.chapters, user, loadingUser]);
+  }, [seriesData?.chapters, user, loadingUser, isConnected]);
 
   const fetchChapters = async (pageNumber: number) => {
     if (!accessToken || loadingChapters || !hasMore) return;
@@ -370,13 +388,15 @@ const HomeScreen = () => {
     }
   };
 
-  const renderSeries = ({ item }: { item: any }) => (
+  // console.log(feedData?.series, "series")
+
+  const renderSeries = ({ item }: { item: ISeries }) => (
     <SeriesCard
       id={item._id}
       title={item.title}
-      author={item.author || "Unknown Author"}
+      author={"Admin Author"}
       cover={item.cover}
-      chapterCount={item.chapters?.length || 0}
+      chapterCount={item.chapters?.filter(item => item.contentModel === "Chapter").length || 0}
     />
   );
 
@@ -400,6 +420,15 @@ const HomeScreen = () => {
   );
 
   const renderSkellySeries = () => <SeriesCardSkelly />;
+
+  console.log(!seriesData, !feedData, !isConnected,  " connection locig ")
+  console.log((!seriesData || !feedData) && !isConnected)
+
+  if ((!seriesData || !feedData) && !isConnected) {
+    return <View style={styles.container}>
+      <Offline />
+    </View>;
+  }
 
   return (
     <View style={styles.container}>
@@ -442,8 +471,8 @@ const HomeScreen = () => {
                           <Text style={styles.accentText}>
                             {(
                               (completeChapters /
-                                seriesData?.chapters?.map(
-                                  (item) => item.content._id,
+                                seriesData?.chapters?.filter(
+                                  (item) => item.contentModel === "Chapter",
                                 ).length) *
                               100
                             ).toFixed(0)}
@@ -460,8 +489,8 @@ const HomeScreen = () => {
                                 width:
                                   width *
                                   (completeChapters /
-                                    seriesData?.chapters?.map(
-                                      (item) => item.content._id,
+                                    seriesData?.chapters?.filter(
+                                      (item) => item.contentModel === "Chapter",
                                     ).length),
                               },
                             ]}
@@ -491,8 +520,8 @@ const HomeScreen = () => {
             {/* continue learnign */}
             {continueReading && (
               <SectionHeader
-                title="Available for you"
-                icon={<AvailableIcon />}
+                title="Continue Learning"
+                icon={<ContinueIcon />}
               />
             )}
             {isContinueLoading && (
@@ -503,9 +532,16 @@ const HomeScreen = () => {
               </View>
             )}
             {continueReading && (
-              <View style={{ paddingHorizontal: 20 }}>
+              <View
+                style={{
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingBottom: 20,
+                }}>
                 {continueReading?.map((item) => (
+                  <View key={item.content._id}>
                   <Contentprogress
+                  
                     id={item.content._id}
                     cover={item.content.cover}
                     title={item.content.title}
@@ -513,7 +549,9 @@ const HomeScreen = () => {
                     total={item.total}
                     type={item.content.type}
                     author={item.content.author}
-                  />
+                    learWidth={(width / 100) * 85}
+                    />
+                    </View>
                 ))}
               </View>
             )}
@@ -537,7 +575,7 @@ const HomeScreen = () => {
                   ...styles.horizontalList,
                   width,
                 }}
-                data={feedData?.series || []}
+                data={[1,2,3,4]}
                 pagingEnabled
                 snapEnabled
                 onConfigurePanGesture={(gestureChain) =>
@@ -593,10 +631,56 @@ const HomeScreen = () => {
             {/* Your Feed */}
             <SectionHeader title="Your Feed" icon={<YourFeedIcon />} />
             <View style={styles.gridContainer}>
+              {
+                loading ? 
+                <FlatList
+                data={[1,2,3,4,5,6]}
+                renderItem={() => <ChapterCardSkelly />}
+                keyExtractor={(item) => item + ""}
+                numColumns={2}
+                scrollEnabled={false}
+                columnWrapperStyle={{
+                  justifyContent: "space-between",
+                  paddingHorizontal: SIDE_PADDING - 2,
+                }}
+                contentContainerStyle={{
+                  paddingHorizontal: 24,
+                }}
+              /> :
               <FlatList
-                data={feedData?.personalized || []}
-                renderItem={renderContentCard}
-                keyExtractor={(item) => item._id}
+              data={feedData?.personalized || []}
+              renderItem={renderContentCard}
+              keyExtractor={(item) => item._id}
+              numColumns={2}
+              scrollEnabled={false}
+              columnWrapperStyle={{
+                justifyContent: "space-between",
+                paddingHorizontal: SIDE_PADDING - 2,
+              }}
+              contentContainerStyle={{
+                paddingHorizontal: 24,
+              }}
+              />
+            }
+            </View>
+
+            {/* Trending */}
+            <SectionHeader title="Trending Now" icon={<TrendingIcon />} />
+            {loading ?
+            <SkellyCrousel />
+            : <ContentSlider data={feedData?.trending || []} />
+          }
+
+            {/* All Stuff */}
+            <SectionHeader title="All Stuff" icon={<AllStuffIcon />} />
+          </>
+        }
+        ListFooterComponent={
+          loadingChapters ? (
+             <FlatList
+                data={[1,2]}
+                renderItem={() => <ChapterCardSkelly />}
+                keyExtractor={(item) => item + ""}
                 numColumns={2}
                 scrollEnabled={false}
                 columnWrapperStyle={{
@@ -607,22 +691,6 @@ const HomeScreen = () => {
                   paddingHorizontal: 24,
                 }}
               />
-            </View>
-
-            {/* Trending */}
-            <SectionHeader title="Trending Now" icon={<TrendingIcon />} />
-            <ContentSlider data={feedData?.trending || []} />
-
-            {/* All Stuff */}
-            <SectionHeader title="All Stuff" icon={<AllStuffIcon />} />
-          </>
-        }
-        ListFooterComponent={
-          loadingChapters ? (
-            <>
-              <ChapterCardSkelly />
-              <ChapterCardSkelly />
-            </>
           ) : !hasMore ? (
             <Text>noting to show</Text>
           ) : null

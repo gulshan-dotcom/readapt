@@ -16,6 +16,7 @@ import {
   setAudioModeAsync,
 } from "expo-audio";
 import ReactNativeBlobUtil from "react-native-blob-util";
+import { useNetworkStatus } from "../../hooks/useNetwork";
 
 type ToastData = {
   title: string;
@@ -48,8 +49,8 @@ type AudioContextType = {
   togglePlay: () => void;
   pause: () => void;
   seekTo: (seconds: number) => void;
+  removeAllTracks:  () => void;
 };
-
 
 export const AudioContext = createContext<AudioContextType | null>(null);
 export const ToastContext = createContext<ToastContextType | null>(null);
@@ -64,7 +65,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [toast, setToast] = useState<ToastData | null>(null);
   const [modal, setModal] = useState<ModalData | null>(null);
   const [user, setUser] = useState<IUser | null>(null);
-  const [accessToken] = useAuth();
+  const { accessToken } = useAuth();
+  const { isConnected } = useNetworkStatus();
 
   const [loadingUser, setLoadingUser] = useState(true);
 
@@ -99,6 +101,8 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const hideModal = () => {
     setModal(null);
   };
+
+
   const getUser = useCallback(async () => {
     if (!accessToken) {
       setUser(null);
@@ -106,35 +110,31 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     }
 
     try {
-      console.log("fetching user")
       const data = await api.get(`/get-self`, {
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-      const userData: IUser = data.data.data
-      console.log("fetched user")
+      const userData: IUser = data.data.data;
+      console.log("fetched user");
       setUser(userData);
     } catch (error) {
-      console.error("Error fetching series data:", error);
+      console.error("Error fetching user data:", error);
       showToast({ title: "Error" });
     } finally {
       setLoadingUser(false);
     }
-  }, [accessToken]);
+  }, [ accessToken, isConnected ]);
 
   useEffect(() => {
     getUser();
-  }, [getUser]);
+  }, [getUser, isConnected]);
 
   const [currentTrack, setCurrentTrack] = useState<any>(null);
 
-  const player = useAudioPlayer(
-    currentTrack?.media ?? null,
-    {
-      updateInterval: 1000,
-    }
-  );
+  const player = useAudioPlayer(currentTrack?.media ?? null, {
+    updateInterval: 1000,
+  });
 
   const status = useAudioPlayerStatus(player);
 
@@ -157,15 +157,26 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
   const DEMO_AUDIO_URL =
     "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
 
-const playTrack = async (track: any) => {
-  if (!track) return;
+  const playTrack = async (track: any) => {
+    if (!isConnected && track.media.includes("file://")) {
+      showToast({ title: "Please connect to internet to play audio" });
+      return;
+    }
+    if (!track) return;
 
-  const targetUrl = track.media || DEMO_AUDIO_URL;
-  
-  player.replace({ uri: targetUrl });
+    const targetUrl = track.media || DEMO_AUDIO_URL;
 
-  setCurrentTrack(track);
-};
+    player.replace({ uri: targetUrl });
+
+    setCurrentTrack(track);
+  };
+
+  const removeAllTracks = async () => {
+    // `useAudioPlayer` owns the player lifecycle; removing it directly can
+    // crash the app. Stop playback and clear the source instead.
+    player.pause();
+    setCurrentTrack(null);
+  };
 
   /*
    * Enable Android notification / lock-screen controls
@@ -174,15 +185,19 @@ const playTrack = async (track: any) => {
     if (!currentTrack || !status?.isLoaded) return;
 
     try {
-      player.setActiveForLockScreen(true, {
-        title: currentTrack.title ?? "Audio",
-        artist: currentTrack.author ?? "Unknown Artist",
-        albumTitle: "Redapt",
-        artworkUrl: currentTrack.cover,
-      }, {
-        showSeekBackward: true,
-        showSeekForward: true,
-      });
+      player.setActiveForLockScreen(
+        true,
+        {
+          title: currentTrack.title ?? "Audio",
+          artist: currentTrack.author ?? "Unknown Artist",
+          albumTitle: "Redapt",
+          artworkUrl: currentTrack.cover,
+        },
+        {
+          showSeekBackward: true,
+          showSeekForward: true,
+        },
+      );
     } catch (error) {
       console.log("Lock screen setup error:", error);
     }
@@ -190,13 +205,9 @@ const playTrack = async (track: any) => {
     return () => {
       try {
         player.clearLockScreenControls();
-      } catch { }
+      } catch {}
     };
-  }, [
-    currentTrack,
-    status?.isLoaded,
-    player,
-  ]);
+  }, [currentTrack, status?.isLoaded, player]);
 
   /*
    * Automatically start a newly selected track
@@ -234,12 +245,9 @@ const playTrack = async (track: any) => {
       togglePlay,
       pause,
       seekTo,
+      removeAllTracks
     }),
-    [
-      player,
-      status,
-      currentTrack,
-    ]
+    [player, status, currentTrack],
   );
 
   return (

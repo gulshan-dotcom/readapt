@@ -22,7 +22,7 @@ const SplashScreen = ({ route, navigation }: Props) => {
   const scale = useRef(new Animated.Value(0.66)).current;
   const transform = useRef(new Animated.Value(50)).current;
 
-  const [accessToken, isLoggedIn, isLoading] = useAuth();
+  const {isLoggedIn, isLoading} = useAuth();
 
   useEffect(() => {
     if (!isLoading) {

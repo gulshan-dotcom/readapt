@@ -25,11 +25,13 @@ import PopButton from "../../components/props/PopButton";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../../components/nav/MainNavigation";
 import { useModal } from "../../hooks/useModal";
-import { useImageUploader } from "../../lib/uploadthing";
+import { useImageUploader, hasUploadThingConfig } from "../../lib/uploadthing";
 import { useToast } from "../../hooks/useToast";
 import { getLevelTitle } from "../../lib/levels";
 import { useStreak } from "../../hooks/useStreak";
 import * as SecureStore from "expo-secure-store";
+import Offline from "../../components/state/Offline";
+import { useNetworkStatus } from "../../hooks/useNetwork";
 const { width, height } = Dimensions.get("window");
 
 // Level colors
@@ -55,7 +57,7 @@ type IRecentRead = {
 const ProfileScreen = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const [accessToken] = useAuth();
+  const { accessToken } = useAuth();
   const { user, reload, loadingUser } = useUser();
   const { openImagePicker, isUploading } = useImageUploader("profileImage", {
     headers: async () => {
@@ -75,7 +77,6 @@ const ProfileScreen = () => {
 
   const [seriesData, setSeriesData] = useState<ISeries | null>(null);
   const [completeChapters, setCompleteChapters] = useState(0);
-  const [isContinueLoading, setIsContinueLoading] = useState(true);
   const { showModal } = useModal();
   const { streak } = useStreak();
   const [avatar, setAvatar] = useState(user?.image ?? "");
@@ -88,6 +89,7 @@ const ProfileScreen = () => {
   const [showUsernameModal, setShowUsernameModal] = useState(false);
   const [newUsername, setNewUsername] = useState(user?.name ?? "");
   const [updatingUsername, setUpdatingUsername] = useState(false);
+  const { isConnected } = useNetworkStatus();
 
   useEffect(() => {
     if (user?.name) {
@@ -101,6 +103,10 @@ const ProfileScreen = () => {
     const getSeries = async () => {
       if (user && user?.joinedSeries) {
         try {
+          console.log(
+            "Fetching series data for joinedSeries:",
+            user.joinedSeries,
+          );
           const data = await api.get(`/series/${user.joinedSeries}`, {
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -115,7 +121,7 @@ const ProfileScreen = () => {
       }
     };
     getSeries();
-  }, [user, loadingUser, accessToken]);
+  }, [user, loadingUser, accessToken, isConnected]);
 
   // ─── Calculate Progress from recentReads ────────────────────
   useEffect(() => {
@@ -123,12 +129,10 @@ const ProfileScreen = () => {
 
     const getJoinedSeriesData = async () => {
       const readChapters = await AsyncStorage.getItem("recentReads");
-      if (!readChapters) {
-        setIsContinueLoading(false);
-        return;
-      }
-
+      if (!readChapters) return;
       const recentReads: IRecentRead[] = JSON.parse(readChapters);
+
+      // const recentReads: IRecentRead[] = JSON.parse(readChapters);
       const json: IChapter[] = recentReads.map((r) => r.content);
 
       const ChapterIdsInSeries =
@@ -142,32 +146,38 @@ const ProfileScreen = () => {
     };
 
     getJoinedSeriesData();
-  }, [seriesData?.chapters, user, loadingUser]);
+  }, [seriesData?.chapters, user, loadingUser, isConnected]);
 
   // ─── Helpers ────────────────────────────────────────────────
-  const progressPercent = seriesData?.chapters?.length
-    ? Math.min(
-        Math.round((completeChapters / seriesData.chapters.length) * 100),
-        100,
-      )
-    : 0;
+  const progressPercent = (
+    (completeChapters /
+      (seriesData?.chapters || [])?.filter(
+        (item) => item.contentModel === "Chapter",
+      ).length) *
+    100
+  ).toFixed(0);
 
   const levelName = user?.profileLevel
     ? getLevelTitle(user?.profileLevel)
     : "Novice";
   const levelColor = LEVEL_COLORS[levelName] || LEVEL_COLORS.Novice;
-  const streakDays = 7;
 
   const handleLogout = async () => {
     // Your logout logic here
     await SecureStore.deleteItemAsync("accessToken");
     navigation.reset({
-    index: 0,
-    routes: [{ name: "Login" }],
-  });
+      index: 0,
+      routes: [{ name: "Login" }],
+    });
   };
 
   const updateUsername = async () => {
+     if (!isConnected) {
+      showToast({
+        title: "Please connect to the Internet.",
+      });
+      return;
+    }
     if (!newUsername.trim()) {
       showToast({ title: "Username cannot be empty" });
       return;
@@ -259,6 +269,14 @@ const ProfileScreen = () => {
           <TouchableOpacity
             onPress={() => {
               if (isUploading) return;
+
+              if (!hasUploadThingConfig) {
+                showToast({
+                  title: "Profile image upload is not configured yet.",
+                });
+                return;
+              }
+
               openImagePicker({
                 source: "library",
                 onInsufficientPermissions: () => {
@@ -281,11 +299,13 @@ const ProfileScreen = () => {
 
           <View style={styles.infoDetails}>
             <PopButton onPress={() => setShowUsernameModal(true)}>
-              <Text style={styles.userName}>{user?.name || "Skylie Jatt"}</Text>
+              <Text style={styles.userName}>
+                {user?.name || "Readapt User"}
+              </Text>
             </PopButton>
             <PopButton>
               <Text style={styles.userHandle}>
-                @{user?.userId || "skylie.jatt0g"}
+                @{user?.userId || "readapt_user"}
               </Text>
             </PopButton>
 
@@ -315,14 +335,7 @@ const ProfileScreen = () => {
                     <Text style={styles.progressMeta}>
                       Chapter {completeChapters} •{" "}
                       <Text style={styles.accentText}>
-                        {(
-                          (completeChapters /
-                            seriesData?.chapters?.map(
-                              (item) => item.content._id,
-                            ).length) *
-                          100
-                        ).toFixed(0)}
-                        % Complete
+                        {progressPercent}% Complete
                       </Text>
                     </Text>
 
@@ -332,12 +345,7 @@ const ProfileScreen = () => {
                         style={[
                           styles.progressFill,
                           {
-                            width:
-                              width *
-                              (completeChapters /
-                                seriesData?.chapters?.map(
-                                  (item) => item.content._id,
-                                ).length),
+                            width: (width / 100) * Number(progressPercent),
                           },
                         ]}
                       />
@@ -718,6 +726,7 @@ const styles = StyleSheet.create({
   progressFill: {
     height: "100%",
     borderRadius: 10,
+    backgroundColor: pallete.accent,
   },
 
   // Streak Card

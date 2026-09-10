@@ -20,6 +20,9 @@ import About from "../../app/screens/About";
 import SplashScreen from "../../app/screens/Splash";
 import { useUser } from "../../hooks/useUser";
 import AudioControls from "../props/AudioControls";
+import { useToast } from "../../hooks/useToast";
+import { useNetworkStatus } from "../../hooks/useNetwork";
+import { configureApiInterceptor } from "../../lib/api";
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -40,7 +43,7 @@ export const navigationRef = createNavigationContainerRef()
 const Stack = createStackNavigator<RootStackParamList>();
 
 export default function MainNavigation() {
-  const [isLoggedIn, isLoading] = useAuth();
+  const {isLoggedIn, isLoading} = useAuth();
   const {user, loadingUser} = useUser()
   const [initialPage, setinitialPage] =
     useState<keyof RootStackParamList>("Splash");
@@ -63,6 +66,16 @@ export default function MainNavigation() {
       }
     }
   }, [isLoggedIn, isLoading]);
+
+
+  const { showToast } = useToast();
+  const { isConnected } = useNetworkStatus();
+
+  useEffect(() => {
+    configureApiInterceptor(Boolean(isConnected), (msg) => {
+      showToast({ title: "This function is not available offline"});
+    });
+  }, [isConnected, showToast]);
 
   return (
     <SafeAreaProvider>

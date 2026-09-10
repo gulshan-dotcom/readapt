@@ -35,6 +35,7 @@ import { useToast } from "../../hooks/useToast";
 import { api } from "../../lib/api";
 import { useUser } from "../../hooks/useUser";
 import { IComment } from "../../types/Comment";
+import { useNetworkStatus } from "../../hooks/useNetwork";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const DRAWER_HEIGHT = SCREEN_HEIGHT * 0.85;
@@ -60,7 +61,6 @@ type Props = {
   onClose: () => void;
   chapterId: string;
   initialComments?: Comment[];
-  commentsCount?: number | string;
   isQuestion?: boolean;
 };
 
@@ -73,13 +73,14 @@ const CommentsDrawer = ({
   initialComments = [],
   isQuestion = false,
 }: Props) => {
-  const [accessToken, isLoading] = useAuth();
+  const {accessToken} = useAuth();
   const { user } = useUser();
   const [comments, setComments] = useState<Comment[]>(initialComments);
   const [text, setText] = useState("");
   const [posting, setPosting] = useState(false);
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
+  const { isConnected } = useNetworkStatus()
   const translateY = useSharedValue(DRAWER_HEIGHT);
   const context = useSharedValue({ y: 0 });
 
@@ -178,6 +179,12 @@ const CommentsDrawer = ({
 
   // ─── Post Comment ───────────────────────────────────────────
   const handleSend = async () => {
+     if (!isConnected) {
+      showToast({
+        title: "Please connect to the Internet.",
+      });
+      return;
+    }
     if (!text.trim() || !accessToken || posting) {
       showToast({ title: "Alredy sent please wait" });
       return;
@@ -245,8 +252,10 @@ const CommentsDrawer = ({
   useEffect(() => {
     if (isQuestion && accessToken && visible) {
       getCommentsOfQue();
+    } else if (!isQuestion && accessToken && visible) {
+      setLoading(false)
     }
-  }, [accessToken, visible]);
+  }, [accessToken, visible, isConnected]);
 
   // ─── Render Item ────────────────────────────────────────────
   const renderComment = ({ item }: { item: Comment }) => (
@@ -313,9 +322,10 @@ const CommentsDrawer = ({
               {loading ? (
                 <ActivityIndicator color={pallete.accent} size={30} />
               ) : (
-                <Text style={styles.emptyText}>
-                  No comments yet. Be the first!
-                </Text>
+                  <View style={styles.emptyCommentsBox}>
+                    <Text style={styles.emptyTitleText}>No Comments Yet</Text>
+                    <Text style={styles.emptyText}>Be the first to share your thoughts about this!</Text>
+                  </View>
               )}
             </>
           }
@@ -492,8 +502,19 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: "center",
     color: "#9ca3af",
-    marginTop: 40,
     fontSize: 14,
+  },
+  emptyTitleText : {
+    textAlign: "center",
+    color: "#c5c5c5",
+fontWeight: "600",
+    fontSize: 18,
+    marginTop: 40,
+  }, 
+  emptyCommentsBox : {
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 40,
   },
   inputWrapper: {
     paddingHorizontal: 24,

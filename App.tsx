@@ -13,6 +13,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useEffect } from "react";
 import * as NavigationBar from "expo-navigation-bar";
 import AudioControls from "./components/props/AudioControls";
+import { useStreak } from "./hooks/useStreak";
 
 export default function App() {
   useEffect(() => {
@@ -21,6 +22,13 @@ export default function App() {
       NavigationBar.setStyle("dark");
     }
   }, []);
+
+  const {refreshStreak} = useStreak()
+  
+  useEffect(() => {
+    refreshStreak()
+  }, [refreshStreak])
+  
   return (
     <SafeAreaProvider>
       <View style={styles.container}>

@@ -7,6 +7,7 @@ import {
   ScrollView,
   Dimensions,
   FlatList,
+  ActivityIndicator,
 } from "react-native";
 import React, { useEffect, useState } from "react";
 import Svg, { Path, Circle, Polyline, Line, G } from "react-native-svg";
@@ -44,6 +45,8 @@ import Carousel from "react-native-reanimated-carousel";
 import QuestionCard from "../../components/props/QuestionCard";
 import { IQuestion } from "../../types/Question";
 import CommentsDrawer from "../../components/props/Comments";
+import Offline from "../../components/state/Offline";
+import { useNetworkStatus } from "../../hooks/useNetwork";
 
 const SHEET_HEIGHT = 320;
 
@@ -241,27 +244,24 @@ interface SeriesOverviewProps {
 }
 
 const SeriesOverview = ({ route }: SeriesOverviewProps) => {
-  const [accesstoken] = useAuth();
+  const { accessToken } = useAuth();
   const { showToast } = useToast();
   const [seriesData, setSeriesData] = useState<ISeries | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const { showModal } = useModal();
   const [completeChapters, setCompleteChapters] = useState(0);
-  const [accessToken] = useAuth();
   const { user, reload } = useUser();
   const [isJoined, setIsJoined] = useState(
     user?.joinedSeries === route.params?.seriesId,
   );
-  const [commentedQueId, setCommentedQueId] = useState("");
-
-  const [showComments, setShowComments] = useState(false);
+  const {isConnected} = useNetworkStatus()
 
   const getSeries = async () => {
-    if (accesstoken) {
+    if (accessToken) {
       try {
         const { data } = await api.get(`/series/${route.params?.seriesId}`, {
           headers: {
-            Authorization: `Bearer ${accesstoken}`,
+            Authorization: `Bearer ${accessToken}`,
           },
         });
         const series: ISeries = data.data;
@@ -276,7 +276,7 @@ const SeriesOverview = ({ route }: SeriesOverviewProps) => {
   useEffect(() => {
     if (seriesData) return;
     getSeries();
-  }, [accesstoken, route.params?.seriesId, showToast]);
+  }, [accessToken, route.params?.seriesId, showToast, isConnected]);
 
   useEffect(() => {
     setIsJoined(user?.joinedSeries === seriesData?._id);
@@ -286,7 +286,7 @@ const SeriesOverview = ({ route }: SeriesOverviewProps) => {
   const joinedCount = seriesData?.joinedBy.length || 0;
   const coverUrl = seriesData?.cover;
 
-  const totalChapters = seriesData?.chapters?.length || 48;
+  const totalChapters = seriesData?.chapters?.filter((item) => item.contentModel === "Chapter").length || 48;
   const ChapterIdsInSeries = seriesData?.chapters?.map(
     (item) => item.content._id,
   );
@@ -306,9 +306,13 @@ const SeriesOverview = ({ route }: SeriesOverviewProps) => {
       setCompleteChapters(readChaptersInSeries.length);
     };
     getJoinedSeriesData();
-  }, [seriesData?.chapters]);
+  }, [seriesData?.chapters, isConnected]);
 
   const joinSeries = async () => {
+    if(!isConnected) {
+      showToast({title: "You are offline! please Connect to the Internet"})
+      return;
+    }
     try {
       const data = await api.post(
         "/series/join",
@@ -341,6 +345,16 @@ const SeriesOverview = ({ route }: SeriesOverviewProps) => {
   };
 
   const exitSeries = async () => {
+     if (!isConnected) {
+      showToast({
+        title: "Please connect to the Internet.",
+      });
+      return;
+    }
+     if(!isConnected) {
+      showToast({title: "You are offline! please Connect to the Internet"})
+      return;
+    }
     try {
       const data = await api.post(
         "/series/exit",
@@ -373,32 +387,22 @@ const SeriesOverview = ({ route }: SeriesOverviewProps) => {
 
   if (!seriesData) {
     return (
-      <View style={styles.body}>
-        <Text style={styles.cardTitle}>Series data not available</Text>
+      <View style={[styles.body,{ paddingTop: 100, alignItems: "center", justifyContent: "center"}]}>
+        <ActivityIndicator />
       </View>
     );
   }
-
-  const renderQuestionCard = ({ item }: { item: ISeriesContent }) => {
-    if (item.contentModel === "Question" && typeof item.content !== "string") {
-      const questionData = item.content as IQuestion;
-      return (
-        <QuestionCard
-          onCommentClick={() => {
-            setCommentedQueId(questionData._id);
-            setShowComments(true);
-          }}
-          key={questionData._id}
-          question={questionData}
-        />
-      );
-    }
-  };
 
   const renderContentCard = ({ item }: { item: any }) => {
     const chapterData = item.content as IChapter;
     return <ContentCard key={chapterData._id} book={chapterData} />;
   };
+
+    if ((!user || !seriesData ) && !isConnected) {
+    return <View style={[styles.body,{ paddingTop: 100, alignItems: "center", justifyContent: "center"}]}>
+      <Offline />
+    </View>;
+  }
 
   return (
     <View style={styles.body}>
@@ -537,52 +541,6 @@ const SeriesOverview = ({ route }: SeriesOverviewProps) => {
           </View>
         </PopButton>
 
-        <View style={styles.pollSection}>
-          <Carousel
-            loop={false}
-            width={width}
-            height={510}
-            style={{
-              width,
-            }}
-            data={
-              seriesData?.chapters?.filter(
-                (item) => item.contentModel === "Question",
-              ) || []
-            }
-            pagingEnabled
-            snapEnabled
-            mode="parallax"
-            onConfigurePanGesture={(gestureChain) =>
-              gestureChain.activeOffsetX([-15, 15]).failOffsetY([-10, 10])
-            }
-            modeConfig={{
-              parallaxScrollingScale: 0.92,
-              parallaxScrollingOffset: 0,
-            }}
-            renderItem={({ item }) => (
-              <View
-                style={{
-                  width: (width / 100) * 85,
-                  height: "100%",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  // backgroundColor: "blue"
-                }}>
-                <View
-                  style={{
-                    width: (width / 100) * 85, // Constrain visual asset to strict card width
-                    height: "100%",
-                    // backgroundColor: "red"
-                    // padding: SIDE_PADDING,
-                  }}>
-                  {renderQuestionCard({ item })}
-                </View>
-              </View>
-            )}
-          />
-        </View>
-
         {/* Grid Iteration Viewport Mapping Blocks Context */}
         <View style={styles.gridSection}>
           <View style={styles.booksGrid}>
@@ -598,7 +556,7 @@ const SeriesOverview = ({ route }: SeriesOverviewProps) => {
               scrollEnabled={false}
               columnWrapperStyle={{
                 justifyContent: "space-between",
-                paddingHorizontal: 5,
+                paddingHorizontal: 15,
               }}
               contentContainerStyle={{
                 paddingHorizontal: 0,
@@ -617,13 +575,6 @@ const SeriesOverview = ({ route }: SeriesOverviewProps) => {
           published: new Date(seriesData.createdAt).toLocaleDateString(),
           description: seriesData?.description,
         }}
-      />
-      <CommentsDrawer
-        visible={showComments}
-        reload={getSeries}
-        onClose={() => setShowComments(false)}
-        chapterId={commentedQueId}
-        isQuestion={true}
       />
     </View>
   );
@@ -687,16 +638,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "500",
     color: "#e5e7eb",
-  },
-  pollSection: {
-    marginBottom: 20,
-    overflow: "hidden",
-  },
-  pollSlider: {
-    display: "flex",
-    gap: 16,
-    paddingHorizontal: pallete.paddingside,
-    paddingBottom: 10,
   },
   progressBox: {
     backgroundColor: pallete.bgcard,
