@@ -512,7 +512,7 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        <Text style={styles.footer}>© 2025 Naveen Kewat · Version 1.0.2</Text>
+        <Text style={styles.footer}>© 2026 Readapt · Version 1.0.2</Text>
       </ScrollView>
 
       <Modal

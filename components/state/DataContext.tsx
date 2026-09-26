@@ -10,11 +10,13 @@ import {
 import { IUser } from "../../types/User";
 import useAuth from "../../hooks/useAuth";
 import { api } from "../../lib/api";
-import {
-  useAudioPlayer,
-  useAudioPlayerStatus,
-  setAudioModeAsync,
-} from "expo-audio";
+import TrackPlayer, {
+  Capability,
+  Event,
+  State,
+  useProgress,
+  useTrackPlayerEvents,
+} from "react-native-track-player";
 import ReactNativeBlobUtil from "react-native-blob-util";
 import { useNetworkStatus } from "../../hooks/useNetwork";
 
@@ -49,7 +51,7 @@ type AudioContextType = {
   togglePlay: () => void;
   pause: () => void;
   seekTo: (seconds: number) => void;
-  removeAllTracks:  () => void;
+  removeAllTracks: () => void;
 };
 
 export const AudioContext = createContext<AudioContextType | null>(null);
@@ -60,6 +62,51 @@ export const UserContext = createContext<{
   loadingUser: boolean;
   reload: () => Promise<void>;
 } | null>(null);
+
+const DEMO_AUDIO_URL =
+  "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+
+// NOTE: the exact nightly you have pinned
+// ("react-native-track-player@5.0.0-alpha0-nightly-...") still ships the
+// pre-rename package name (`react-native-track-player`, not `@rntp/player`)
+// and, as of alpha0, still speaks the older/V4-style JS API (add/play/
+// updateOptions/Capability) rather than the newer setMediaItems/
+// PlayerCommand API that later V5 builds settled on. This file is written
+// against that older surface to match what's actually installed. Double-
+// check node_modules/react-native-track-player/package.json's "version"
+// and its type declarations if anything here doesn't match — alpha/nightly
+// builds change their API between commits.
+//
+// Also worth knowing: there's an open, unresolved upstream issue reporting
+// that this exact alpha0 line doesn't play tracks at all on iOS
+// (doublesymmetry/react-native-track-player#2503). Worth confirming
+// playback actually works on a real iOS device/simulator before relying on
+// this pinned commit for anything real.
+
+let setupPromise: Promise<void> | null = null;
+
+const ensurePlayerSetup = () => {
+  if (!setupPromise) {
+    setupPromise = TrackPlayer.setupPlayer()
+      .then(() =>
+        TrackPlayer.updateOptions({
+          capabilities: [
+            Capability.Play,
+            Capability.Pause,
+            Capability.Stop,
+            Capability.SeekTo,
+          ],
+          compactCapabilities: [Capability.Play, Capability.Pause],
+        }),
+      )
+      .catch((error) => {
+        console.log("Audio setup error:", error);
+        setupPromise = null; // allow a retry on the next playTrack/mount
+        throw error;
+      });
+  }
+  return setupPromise;
+};
 
 export const DataProvider = ({ children }: { children: ReactNode }) => {
   const [toast, setToast] = useState<ToastData | null>(null);
@@ -102,7 +149,6 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     setModal(null);
   };
 
-
   const getUser = useCallback(async () => {
     if (!accessToken) {
       setUser(null);
@@ -124,117 +170,129 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setLoadingUser(false);
     }
-  }, [ accessToken, isConnected ]);
+  }, [accessToken, isConnected]);
 
   useEffect(() => {
     getUser();
   }, [getUser, isConnected]);
 
-  const [currentTrack, setCurrentTrack] = useState<any>(null);
-
-  const player = useAudioPlayer(currentTrack?.media ?? null, {
-    updateInterval: 1000,
-  });
-
-  const status = useAudioPlayerStatus(player);
-
+  // ── react-native-track-player (alpha0 nightly, pre-@rntp/player) ──
   useEffect(() => {
-    const setupAudio = async () => {
-      try {
-        await setAudioModeAsync({
-          playsInSilentMode: true,
-          shouldPlayInBackground: true,
-          interruptionMode: "doNotMix",
-        });
-      } catch (error) {
-        console.log("Audio mode error:", error);
-      }
-    };
-
-    setupAudio();
+    ensurePlayerSetup().catch(() => {});
   }, []);
 
-  const DEMO_AUDIO_URL =
-    "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3";
+  const [currentTrack, setCurrentTrack] = useState<any>(null);
+  const [playerState, setPlayerState] = useState<State>(State.None);
+  const { position, duration } = useProgress();
 
-  const playTrack = async (track: any) => {
-    if (!isConnected && track.media.includes("file://")) {
-      showToast({ title: "Please connect to internet to play audio" });
-      return;
-    }
-    if (!track) return;
+  useTrackPlayerEvents(
+    [Event.PlaybackState, Event.PlaybackError],
+    (event) => {
+      if (event.type === Event.PlaybackState) {
+        setPlayerState(event.state);
+      } else if (event.type === Event.PlaybackError) {
+        console.log("Playback error:", event);
+      }
+    },
+  );
 
-    const targetUrl = track.media || DEMO_AUDIO_URL;
+  const isPlayingNow = playerState === State.Playing;
+  const isLoaded =
+    !!currentTrack && playerState !== State.None && playerState !== State.Error;
 
-    player.replace({ uri: targetUrl });
+  const status = useMemo(
+    () => ({
+      playing: isPlayingNow,
+      isLoaded,
+      duration,
+      currentTime: position,
+      playbackState: playerState,
+    }),
+    [isPlayingNow, isLoaded, duration, position, playerState],
+  );
 
-    setCurrentTrack(track);
-  };
+  // Kept as a stable "player" facade (play/pause/seekTo/setPlaybackRate)
+  // so existing consumers that call `player.seekTo(...)` or
+  // `player.setPlaybackRate(...)` (see AudioRdr.tsx) don't need to change.
+  const player = useMemo(
+    () => ({
+      play: () => TrackPlayer.play(),
+      pause: () => TrackPlayer.pause(),
+      seekTo: (sec: number) => TrackPlayer.seekTo(sec),
+      setPlaybackRate: (rate: number) => TrackPlayer.setRate(rate),
+      replace: async (source: { uri: string }) => {
+        await ensurePlayerSetup();
+        await TrackPlayer.reset();
+        await TrackPlayer.add({
+          id: source.uri,
+          url: source.uri,
+          media: source.uri,
+        });
+        await TrackPlayer.play();
+      },
+    }),
+    [],
+  );
 
-  const removeAllTracks = async () => {
-    // `useAudioPlayer` owns the player lifecycle; removing it directly can
-    // crash the app. Stop playback and clear the source instead.
-    player.pause();
-    setCurrentTrack(null);
-  };
+  const playTrack = useCallback(
+    async (track: any) => {
+      if (!track) return;
+      if (!isConnected && track.media?.includes("file://")) {
+        showToast({ title: "Please connect to internet to play audio" });
+        return;
+      }
 
-  /*
-   * Enable Android notification / lock-screen controls
-   */
-  useEffect(() => {
-    if (!currentTrack || !status?.isLoaded) return;
+      const targetUrl = track.media || DEMO_AUDIO_URL;
 
-    try {
-      player.setActiveForLockScreen(
-        true,
-        {
-          title: currentTrack.title ?? "Audio",
-          artist: currentTrack.author ?? "Unknown Artist",
-          albumTitle: "Redapt",
-          artworkUrl: currentTrack.cover,
-        },
-        {
-          showSeekBackward: true,
-          showSeekForward: true,
-        },
-      );
-    } catch (error) {
-      console.log("Lock screen setup error:", error);
-    }
-
-    return () => {
       try {
-        player.clearLockScreenControls();
-      } catch {}
-    };
-  }, [currentTrack, status?.isLoaded, player]);
+        await ensurePlayerSetup();
+        // Lock-screen / notification metadata (title, artist, artwork) is
+        // picked up automatically from these fields.
+        await TrackPlayer.reset();
+        await TrackPlayer.add({
+          ...track,
+          id: track._id ?? targetUrl,
+          url: targetUrl,
+          media: targetUrl,
+          title: track.title ?? "Audio",
+          artist: track.author ?? "Unknown Artist",
+          artwork: track.cover,
+        });
+        // await TrackPlayer.play();
+        setCurrentTrack(track);
+      } catch (error) {
+        console.log("Error playing track:", error);
+      }
+    },
+    [isConnected],
+  );
 
-  /*
-   * Automatically start a newly selected track
-   */
-  // useEffect(() => {
-  //   if (!currentTrack || !status?.isLoaded) return;
-
-  //   player.play();
-  // }, [currentTrack, status?.isLoaded]);
-
-  const togglePlay = () => {
-    if (!status?.isLoaded) return;
-
-    if (status.playing) {
-      player.pause();
-    } else {
-      player.play();
+  const removeAllTracks = useCallback(async () => {
+    try {
+      await TrackPlayer.reset();
+      setCurrentTrack(null);
+    } catch (error) {
+      console.log("Error clearing tracks:", error);
     }
-  };
+  }, []);
 
-  const pause = () => {
-    player.pause();
-  };
+  const togglePlay = useCallback(() => {
+    if (!isLoaded) return;
 
-  const seekTo = (seconds: number) => {
-    player.seekTo(seconds);
-  };
+    if (isPlayingNow) {
+      TrackPlayer.pause();
+    } else {
+      TrackPlayer.play();
+    }
+  }, [isLoaded, isPlayingNow]);
+
+  const pause = useCallback(() => {
+    TrackPlayer.pause();
+  }, []);
+
+  const seekTo = useCallback((seconds: number) => {
+    TrackPlayer.seekTo(seconds);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -245,9 +303,9 @@ export const DataProvider = ({ children }: { children: ReactNode }) => {
       togglePlay,
       pause,
       seekTo,
-      removeAllTracks
+      removeAllTracks,
     }),
-    [player, status, currentTrack],
+    [player, status, currentTrack, playTrack, togglePlay, pause, seekTo, removeAllTracks],
   );
 
   return (

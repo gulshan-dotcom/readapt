@@ -273,6 +273,7 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 8,
     overflow: "hidden",
+    zIndex: 1500,
   },
   loadingWrapper: {
     padding: 24,

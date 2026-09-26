@@ -60,8 +60,20 @@ const Contentprogress = ({
   };
 
   const handlePress = () => {
-    navigation.navigate("ReadBook", { bookId: id });
+    if(type === "pdf") {
+      navigation.navigate("ReadBook", { bookId: id });
+    } else if(type === "audio") {
+      navigation.navigate("AudioRdr", { bookId : id });
+    }
   };
+
+  const formatTime = (sec: number) => {
+  if (!sec || sec < 0 || !isFinite(sec)) return "0:00";
+  const totalSec = Math.floor(sec);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+};
 
   const progressPercentage =
     total && readtill ? (parseFloat(readtill) / parseFloat(total)) * 100 : 20;
@@ -103,10 +115,10 @@ const Contentprogress = ({
             </Text>
 
             <View style={styles.progressTextContainer}>
-              <Text style={styles.progressRead}>{readtill}</Text>
+              <Text style={styles.progressRead}>{type === "pdf" ? readtill: formatTime(parseFloat(readtill))}</Text>
               <Text style={styles.progressTotal}>
                 {" / "}
-                {total} {type === "pdf" ? "pages" : "min"}
+                {formatTime(parseFloat(readtill + 100))} {type === "pdf" ? "pages" : "min"}
               </Text>
             </View>
 

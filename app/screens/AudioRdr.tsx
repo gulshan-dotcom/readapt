@@ -20,7 +20,6 @@ import {
 } from "react-native";
 import Svg, { Path, Line, Circle, Polyline } from "react-native-svg";
 import { useNavigation } from "@react-navigation/native";
-import { setAudioModeAsync } from "expo-audio";
 import Slider from "@react-native-community/slider";
 import pallete from "../../lib/Colors";
 import useAuth from "../../hooks/useAuth";
@@ -374,7 +373,7 @@ const AudioPlayerScreen = ({ route }: Props) => {
     outputRange: [colors.ctlBg, "#B9D7D4"],
   });
 
-  // ── expo-audio ────────────────────────────────────────────────
+  // ── react-native-track-player ────────────────────────────────────
   // Source updates when book.media is known
   const { player, status, currentTrack, togglePlay, playTrack, seekTo } =
     useGlobalAudio();

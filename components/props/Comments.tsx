@@ -413,6 +413,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "rgba(255,255,255,0.08)",
     overflow: "hidden",
+    zIndex: 10000,
   },
   dragHandleArea: {
     height: 30,
